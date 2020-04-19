@@ -4,6 +4,7 @@ const circuitState = esmRequire('./index.js').default;
 
 describe('circuit-state', () => {
   let element;
+  let handlers = {};
   beforeEach(() => {
     element = {
       querySelectorAll: jest.fn(
@@ -14,7 +15,7 @@ describe('circuit-state', () => {
           }[selector] || [])
       ),
       addEventListener: jest.fn((listener, handler) => {
-        handler.call(element, 456);
+        handlers[listener] = handler;
       }),
     };
   });
@@ -23,7 +24,10 @@ describe('circuit-state', () => {
   });
   it('should create a deep circuit', () => {
     expect(
-      circuitState({ x: { y: jest.fn() } }, element)({ x: { y: 123 } }).x.y
+      circuitState(
+        { x: { y: { z: jest.fn() } } },
+        element
+      )({ x: { y: { z: 123 } } }).x.y.z
     ).toBeDefined();
   });
   it('should access mountpoint element', () => {
@@ -34,6 +38,13 @@ describe('circuit-state', () => {
     const x = jest.fn();
     circuitState({ x }, element)({ x: 123 }).x(456);
     expect(x).toHaveBeenCalledWith({ x: 123 }, 456);
+  });
+  it('should only reduce changed state', () => {
+    const x = jest.fn((state, value) => ({ ...state, x: value }));
+    const circuit = circuitState({ x }, element)({ x: 123 });
+    circuit.x(456);
+    circuit.x(456);
+    expect(x).toHaveBeenCalledTimes(1);
   });
   it('should reduce all signals', () => {
     const x = (state, value) => ({ ...state, x: value });
@@ -57,21 +68,52 @@ describe('circuit-state', () => {
       return this;
     };
     const circuit = circuitState({ x: { onclick: y } }, element)({});
-    expect(element.addEventListener).toHaveBeenCalledTimes(1);
-    expect(element.addEventListener).toHaveBeenCalledWith(
-      'click',
-      expect.any(Function)
-    );
+    handlers.click.call(element, { target: element });
     expect(circuit.state()).toEqual({
       x: element,
+    });
+  });
+  it('should preserver current state', () => {
+    const y = function (state, { target }) {
+      return { ...state, value: target };
+    };
+    const circuit = circuitState(
+      { x: { onclick: y } },
+      element
+    )({ x: { y: 123 } });
+    handlers.click.call(element, { target: element });
+    expect(circuit.state()).toEqual({
+      x: {
+        value: element,
+        y: 123,
+      },
     });
   });
   it('should bind a signal to multiple DOM elements', () => {
     const y = function () {
       return this;
     };
-    debugger;
-    const circuit = circuitState({ x2: { onclick: y } }, element)({});
+    circuitState({ x2: { onclick: y } }, element)({});
     expect(element.addEventListener).toHaveBeenCalledTimes(2);
+  });
+  it('should bind multiple signals to a single DOM', () => {
+    const y1 = function () {
+      return this;
+    };
+    const y2 = function () {
+      return this;
+    };
+    const circuit = circuitState(
+      { x: { onclick1: y1, onclick2: y2 } },
+      element
+    )({});
+    handlers.click1.call(element, { target: element });
+    expect(circuit.state()).toEqual({
+      x: element,
+    });
+    handlers.click2.call(element, { target: element });
+    expect(circuit.state()).toEqual({
+      x: element,
+    });
   });
 });
