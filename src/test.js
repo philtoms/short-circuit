@@ -1,16 +1,23 @@
 const esmRequire = require('esm')(module);
 
-const element = {
-  querySelectorAll: jest.fn(() => [element]),
-  addEventListener: jest.fn((listener, handler) => {
-    debugger;
-    handler.call(element, 456);
-  }),
-};
-
 const circuitState = esmRequire('./index.js').default;
 
 describe('circuit-state', () => {
+  let element;
+  beforeEach(() => {
+    element = {
+      querySelectorAll: jest.fn(
+        (selector) =>
+          ({
+            x: [element],
+            x2: [element, element],
+          }[selector] || [])
+      ),
+      addEventListener: jest.fn((listener, handler) => {
+        handler.call(element, 456);
+      }),
+    };
+  });
   it('should create a circuit', () => {
     expect(circuitState({ x: jest.fn() }, element)({ x: 123 }).x).toBeDefined();
   });
@@ -49,8 +56,8 @@ describe('circuit-state', () => {
     const y = function () {
       return this;
     };
-    debugger;
     const circuit = circuitState({ x: { onclick: y } }, element)({});
+    expect(element.addEventListener).toHaveBeenCalledTimes(1);
     expect(element.addEventListener).toHaveBeenCalledWith(
       'click',
       expect.any(Function)
@@ -58,5 +65,13 @@ describe('circuit-state', () => {
     expect(circuit.state()).toEqual({
       x: element,
     });
+  });
+  it('should bind a signal to multiple DOM elements', () => {
+    const y = function () {
+      return this;
+    };
+    debugger;
+    const circuit = circuitState({ x2: { onclick: y } }, element)({});
+    expect(element.addEventListener).toHaveBeenCalledTimes(2);
   });
 });

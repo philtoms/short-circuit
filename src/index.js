@@ -1,28 +1,36 @@
-const circuitState = (circuit, node, parent = (v) => v) => (state) => {
+const circuitState = (circuit, node, parentSelector, parent = (v) => v) => (
+  state
+) => {
   const propagate = function (reducer, value) {
     state = reducer.call(this, state, value);
     return parent(state);
   };
 
   return Object.entries(circuit).reduce((acc, [signal, reducer]) => {
-    const [selector, event = selector, alias] = signal.split(/[@:]/);
+    const [selector, event, alias] = signal.split(/[@:]/);
 
     // normalise the signal address for state
     const address =
       alias || (selector.startsWith('on') ? selector.slice(2) : selector);
 
-    const elements = []
-      .concat(node || document)
-      .reduce(
-        (acc, node) => [...acc, ...Array.from(node.querySelectorAll(selector))],
-        []
-      );
+    const elements = selector.startsWith('on')
+      ? node
+      : []
+          .concat(node || document)
+          .reduce(
+            (acc, node) => [
+              ...acc,
+              ...Array.from(node.querySelectorAll(selector)),
+            ],
+            []
+          );
 
     const children =
       typeof reducer !== 'function' &&
       circuitState(
         reducer,
         elements,
+        address,
         (value) =>
           (state = {
             ...state,
@@ -37,8 +45,10 @@ const circuitState = (circuit, node, parent = (v) => v) => (state) => {
     };
 
     // bind elements or document events to handler
-    if (event.startsWith('on') || event !== selector) {
-      const listener = event.replace(/(on)?(.+)/, '$2').toLowerCase();
+    if (event || selector.startsWith('on')) {
+      const listener = (event || selector)
+        .replace(/(on)?(.+)/, '$2')
+        .toLowerCase();
       elements.forEach((element) => {
         element.addEventListener(listener, handler);
       });
