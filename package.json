@@ -1,0 +1,17 @@
+{
+  "name": "circuit-state",
+  "version": "1.0.0",
+  "description": "state machine as a live circuit",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest "
+  },
+  "author": "Phil Toms",
+  "keywords": ["reducer", "state", "predictable", "functional", "immutable"],
+  "license": "ISC",
+  "devDependencies": {
+    "esm": "^3.2.25",
+    "jest": "^25.3.0"
+  },
+  "dependencies": {}
+}
