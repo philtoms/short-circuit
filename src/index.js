@@ -1,4 +1,4 @@
-const circuitState = (circuit, node, parent) => (state) => {
+const DOMcircuit = (circuit, node, parent) => (state) => {
   const reducers = [];
   const propagate = function (signalState, signal) {
     state =
@@ -47,7 +47,7 @@ const circuitState = (circuit, node, parent) => (state) => {
     // a signal can be handled directly or passed through to a child circuit
     const children =
       typeof reducer !== 'function' &&
-      circuitState(reducer, elements, (value) =>
+      DOMcircuit(reducer, elements, (value) =>
         propagate({ ...state, [address]: value }, address)
       )(state[address] || {});
 
@@ -81,4 +81,4 @@ const circuitState = (circuit, node, parent) => (state) => {
   }, {});
 };
 
-export default circuitState;
+export default DOMcircuit;

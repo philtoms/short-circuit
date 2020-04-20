@@ -1,21 +1,23 @@
-# circuit-state
+# dom-circuit
 
 The smallest, least opinionated, opinionated state management for DOM applications and other kinds of state machine.
 
-`circuit-state` is not a framework or a library, but a small utility function that helps to bind DOM elements to changes in state. It does not attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for fast-track binding to the minimal set of elements that influence an application's state and hence its behaviour.
+`dom-circuit` is not a framework or a library, but a small utility function that helps to bind DOM elements and their attributes into a live circuit.
+
+`dom-circuit` doesn't attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for fast-track binding to the minimal set of elements that influence an application's state and hence its behaviour.
 
 ## How it works
 
-`circuit-state` takes an object as an argument and returns a function that takes an initial state and returns a state machine - the circuit. The circuit has transformed the key value pairs of the original object into
+`dom-circuit` takes an object (the circuit blueprint) as an argument and returns a function that takes an initial state and returns a signalled state machine - the circuit. Signals raised on the circuit prop
 
 ```
 // a circuit with just one signalled value
-circuit = circuitState({counter: ({counter}, value) => ({counter:counter + value})})({counter: 1})
+circuit = DOMCircuit({counter: ({counter}, value) => ({counter:counter + value})})({counter: 1})
 
 circuit.counter(4) // ==> {counter: 5}
 ```
 
-The object passed into circuit-state is a map of key-values that represent application state. Each key is a state address that can be signalled to change state. Its value is a reducer function that receives the current state and the signalled value and returns a new state. If the new state updates the or the state of another nested circuit.
+The object passed into dom-circuit is a map of key-values that represent application state. Each key is a state address that can be signalled to change state. Its value is a reducer function that receives the current state and the signalled value and returns a new state. If the new state updates the or the state of another nested circuit.
 
 State change is activated through signalling. Signals represent, and thus can be raised by:
 
@@ -28,11 +30,11 @@ Signals bubble up through the circuit and state changes propagate downwards thro
 
 ## Tips
 
-For performance reasons, `circuit-state` only registers mutation observers for the pseudo `onmutation` signal, so
+For performance reasons, `dom-circuit` only registers mutation observers for the pseudo `onmutation` signal, so
 
 ```
 // https://developer.mozilla.org/en-US/docs/Web/API/MutationObserverInit,
-myStateMachine = circuitState({
+myStateMachine = DOMCircuit({
   counter@onmutation: (mutations => ...)(MutationObserverInit)
 })
 ```
