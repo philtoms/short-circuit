@@ -1,17 +1,23 @@
 const circuitState = (circuit, node, parent) => (state) => {
   const reducers = [];
-  const propagate = function (value, signal) {
-    state = reducers.reduce(
-      (acc, [address, reducer]) =>
-        address in state && value[address] === state[address]
-          ? acc
-          : address === signal
-          ? value
-          : address in value
-          ? reducer.call(this, acc, value[address])
-          : acc,
-      state
-    );
+  const propagate = function (signalState, signal) {
+    state =
+      // halt propogation when signal is empty
+      signalState === undefined
+        ? state
+        : // reduce signal state into circuit state.
+          reducers.reduce(
+            (acc, [address, reducer]) =>
+              // signal identity check to filter signalled state change
+              address in state && signalState[address] === state[address]
+                ? acc
+                : address === signal
+                ? signalState
+                : address in signalState
+                ? reducer.call(this, acc, signalState[address])
+                : acc,
+            state
+          );
 
     return parent ? parent(state) : state;
   };
@@ -25,6 +31,7 @@ const circuitState = (circuit, node, parent) => (state) => {
     const address =
       alias || (selector.startsWith('on') ? selector.slice(2) : selector);
 
+    // query on parent node(s) unless selector is event
     const elements = selector.startsWith('on')
       ? node
       : []
@@ -37,6 +44,7 @@ const circuitState = (circuit, node, parent) => (state) => {
             []
           );
 
+    // a signal can be handled directly or passed through to a child circuit
     const children =
       typeof reducer !== 'function' &&
       circuitState(reducer, elements, (value) =>
@@ -55,7 +63,7 @@ const circuitState = (circuit, node, parent) => (state) => {
           );
     };
 
-    // bind elements or document events to handler
+    // bind element events to handler. Handler context (this) will be element
     if (event || selector.startsWith('on')) {
       const listener = (event || selector)
         .replace(/(on)?(.+)/, '$2')
