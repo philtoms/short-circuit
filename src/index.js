@@ -1,13 +1,25 @@
-const circuitState = (circuit, node, parentSelector, parent = (v) => v) => (
-  state
-) => {
-  const propagate = function (reducer, value) {
-    state = reducer.call(this, state, value);
-    return parent(state);
+const circuitState = (circuit, node, parent) => (state) => {
+  const reducers = [];
+  const propagate = function (value, signal) {
+    state = reducers.reduce(
+      (acc, [address, reducer]) =>
+        address in state && value[address] === state[address]
+          ? acc
+          : address === signal
+          ? value
+          : address in value
+          ? reducer.call(this, acc, value[address])
+          : acc,
+      state
+    );
+
+    return parent ? parent(state) : state;
   };
 
   return Object.entries(circuit).reduce((acc, [signal, reducer]) => {
-    const [selector, event, alias] = signal.split(/[@:]/);
+    const { selector, event, alias } = signal.match(
+      /(?<selector>[^$^@]+)(\s?@?(?<event>\w+))?\s?\$?(?<alias>\w+)?/
+    ).groups;
 
     // normalise the signal address for state
     const address =
@@ -27,21 +39,20 @@ const circuitState = (circuit, node, parentSelector, parent = (v) => v) => (
 
     const children =
       typeof reducer !== 'function' &&
-      circuitState(
-        reducer,
-        elements,
-        address,
-        (value) =>
-          (state = {
-            ...state,
-            [address]: value,
-          })
+      circuitState(reducer, elements, (value) =>
+        propagate({ ...state, [address]: value }, address)
       )(state[address] || {});
+
+    reducers.push([address, children ? parent : reducer]);
 
     const handler = function (value) {
       return value === state[address]
         ? value
-        : propagate.call(this, children ? parent : reducer, value);
+        : propagate.call(
+            this,
+            children ? value : reducer.call(this, state, value),
+            address
+          );
     };
 
     // bind elements or document events to handler

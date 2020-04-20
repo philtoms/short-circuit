@@ -2,19 +2,20 @@
 
 The smallest, least opinionated, opinionated state management for DOM applications and other kinds of state machine.
 
-`circuit-state` is neither a framework or a library. It does not attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. Strictly speaking it is a singular utility function. However, it does make a compelling case for fast-track binding to the minimal set of elements that influence an application's state and hence its behaviour.
+`circuit-state` is not a framework or a library, but a small utility function that helps to bind DOM elements to changes in state. It does not attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for fast-track binding to the minimal set of elements that influence an application's state and hence its behaviour.
 
 ## How it works
 
-`circuit-state` takes an object as an argument and returns a function that takes an object as initial state and returns a state machine - the circuit.
+`circuit-state` takes an object as an argument and returns a function that takes an initial state and returns a state machine - the circuit. The circuit has transformed the key value pairs of the original object into
 
 ```
-myStateMachine = circuitState({counter: value => value + 1)({counter: 1}) // myStateMachine.counter === 2
+// a circuit with just one signalled value
+circuit = circuitState({counter: ({counter}, value) => ({counter:counter + value})})({counter: 1})
 
-myStateMachine.counter(4) // ==> 5
+circuit.counter(4) // ==> {counter: 5}
 ```
 
-The object passed into circuit-state is a map of key-values that represent application state. Each key is a state address that can be signalled, and its value is either a map function, a reducer function or the state of another nested circuit.
+The object passed into circuit-state is a map of key-values that represent application state. Each key is a state address that can be signalled to change state. Its value is a reducer function that receives the current state and the signalled value and returns a new state. If the new state updates the or the state of another nested circuit.
 
 State change is activated through signalling. Signals represent, and thus can be raised by:
 
