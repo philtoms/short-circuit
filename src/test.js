@@ -256,9 +256,11 @@ describe('README examples', () => {
       { ...item, id: item.id || ++nextId },
     ];
     const remove = (todos, { id }) => todos.filter((todo) => todo.id !== id);
-    const total = ({ todos }) => todos.length;
-    const done = ({ todos }) =>
-      todos.reduce((count, { done }) => (count + done ? 1 : 0), 0);
+    const total = (state, todos) => ({ ...state, total: todos.length });
+    const done = (state, todos) => ({
+      ...state,
+      done: todos.reduce((count, { done }) => (count + done ? 1 : 0), 0),
+    });
 
     const blueprint = {
       header: {
@@ -269,7 +271,7 @@ describe('README examples', () => {
         remove,
       },
       footer: {
-        'counts:#todos.onchange': {
+        'counts:../todos': {
           total,
           done,
         },
@@ -278,6 +280,7 @@ describe('README examples', () => {
     let app;
     beforeEach(() => {
       nextId = 0;
+      debugger;
       app = DOMCircuit(
         blueprint,
         element
@@ -285,6 +288,7 @@ describe('README examples', () => {
     });
 
     it('should add an item', () => {
+      debugger;
       app.header.add = { text: 'todo 1' };
       expect(app.state.todos).toEqual([{ id: 1, text: 'todo 1' }]);
     });
@@ -300,7 +304,6 @@ describe('README examples', () => {
     });
     it('should update counts', () => {
       app.header.add = { text: 'todo 1' };
-      handlers.change({ counts: 'x' });
       expect(app.state.footer.counts).toEqual({ total: 1, done: 0 });
     });
   });

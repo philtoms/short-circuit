@@ -1,28 +1,47 @@
-const DOMcircuit = (blueprint, element = [], parent) => (state) => {
-  const reducers = [];
-  const propagate = function (signalState, signal) {
-    state =
-      // halt propagation when signal is empty
-      signalState === undefined
-        ? state
-        : // reduce signal state into circuit state.
-          reducers.reduce(
-            (acc, [address, reducer]) =>
-              // signal identity check to filter signalled state change
-              address in state && signalState[address] === state[address]
-                ? acc
-                : address === signal
-                ? signalState
-                : address in signalState
-                ? reducer.call(this, acc, signalState[address])
-                : acc,
-            state
-          );
+const _REDUCERS = Symbol();
+const fromRoot = (circuit, [head, ...tail]) =>
+  tail.length
+    ? fromRoot(circuit[head], tail)
+    : circuit[head]
+    ? circuit[head][_REDUCERS]
+    : false;
+
+const DOMcircuit = (blueprint, element = [], parent) => (
+  state,
+  level = 1,
+  reducers = [],
+  deferred = [],
+  deferredChild
+) => {
+  const propagate = function (signalState, signal, deferred) {
+    deferred
+      ? parent((state = signalState))
+      : (state =
+          // halt propagation when signal is empty
+          signalState === undefined
+            ? state
+            : // reduce signal state into circuit state.
+              reducers.reduce(
+                (acc, [address, reducer, deferred]) =>
+                  // deferred children handle their own state chains and will always
+                  // be propagated after local state has reduced
+                  deferred
+                    ? reducer.call(this, acc) || acc
+                    : // signal identity check to filter signalled state change
+                    address in state && signalState[address] === state[address]
+                    ? acc
+                    : address === signal
+                    ? signalState
+                    : address in signalState
+                    ? reducer.call(this, acc, signalState[address])
+                    : acc,
+                state
+              ));
 
     return parent ? parent(state) : state;
   };
 
-  const circuit = Object.entries(blueprint).reduce((acc, [signal, reducer]) => {
+  const build = (acc, [signal, reducer, deferredReducers]) => {
     const { alias, domSelector } = signal.match(
       /((?<alias>[\w]+):)?(\s*(?<domSelector>.+))?/
     ).groups;
@@ -36,14 +55,23 @@ const DOMcircuit = (blueprint, element = [], parent) => (state) => {
         ''
       );
 
+    let _reducers = fromRoot(acc, selector.split('/').slice(1));
+    const deferring = !_reducers && selector.startsWith('../');
+    if (deferring) {
+      _reducers = [];
+      deferred.push([signal, reducer, _reducers]);
+    } else if (_reducers) {
+      deferredReducers.forEach((reducer) => _reducers.push(reducer));
+      return acc;
+    }
     // optionally query on parent element(s) unless selector is event
     const elements = selector.startsWith('on')
       ? element
       : []
           .concat(element)
           .reduce(
-            (acc, element) => [
-              ...acc,
+            (circuit, element) => [
+              ...circuit,
               ...Array.from(element.querySelectorAll(selector)),
             ],
             []
@@ -54,17 +82,28 @@ const DOMcircuit = (blueprint, element = [], parent) => (state) => {
       typeof reducer !== 'function' &&
       DOMcircuit(reducer, elements, (value) =>
         propagate({ ...state, [address]: value }, address)
-      )(state[address] || {});
+      )(state[address] || {}, level + 1, _reducers || [], deferred, deferring);
 
-    reducers.push([address, children ? parent : reducer]);
+    reducers.push([
+      address,
+      deferredChild
+        ? function (value) {
+            handler.call(this, value, true);
+          }
+        : children
+        ? parent
+        : reducer,
+      deferredChild,
+    ]);
 
-    const handler = function (value) {
+    const handler = function (value, deferred) {
       return value === state[address]
         ? value
         : propagate.call(
             this,
             children ? value : reducer.call(this, state, value),
-            address
+            address,
+            deferred
           );
     };
 
@@ -77,7 +116,6 @@ const DOMcircuit = (blueprint, element = [], parent) => (state) => {
         element.addEventListener(listener, handler);
       });
     }
-
     return Object.defineProperty(acc, address, {
       get() {
         return children || state[address];
@@ -86,12 +124,21 @@ const DOMcircuit = (blueprint, element = [], parent) => (state) => {
         return handler(value)[address];
       },
     });
-  }, {});
-  return Object.defineProperty(circuit, 'state', {
-    get() {
-      return state;
-    },
+  };
+
+  const circuit = Object.entries(blueprint).reduce(build, {
+    [_REDUCERS]: reducers,
   });
+
+  return Object.defineProperty(
+    level == 1 ? deferred.reduce(build, circuit) : circuit,
+    'state',
+    {
+      get() {
+        return state;
+      },
+    }
+  );
 };
 
 export default DOMcircuit;
