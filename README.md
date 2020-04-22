@@ -4,15 +4,44 @@ The smallest, least opinionated, opinionated state management for DOM applicatio
 
 `dom-circuit` is not a framework or a library, but a small utility function that helps to bind DOM elements and their attributes into a live circuit.
 
-`dom-circuit` doesn't attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for fast-track binding to the minimal set of elements that influence an application's state and hence its behaviour.
+It doesn't attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for fast-track binding to the minimal set of elements that influence an application's state and hence its behavior.
+
+```
+import DOMCircuit from 'dom-circuit'
+
+import {add, update, remove} from './todo-actions.js'
+
+const todos = DOMCircuit({
+  header: {
+    add: todos.add
+  },
+  '#todos: {
+    add,
+    todo: {
+      input: update
+      button: remove
+    }
+  },
+  footer: {
+    count
+  }
+})({todos: []})
+```
+
+```
+export const add => (todos, newItem) => [...todos, newItem]
+export const update => ()
+```
 
 ## How it works
 
-`dom-circuit` takes an object (the circuit blueprint) as an argument and returns a function that takes an initial state and returns a signalled state machine - the circuit. Signals raised on the circuit prop
+`dom-circuit` takes an object (a map of CSS selectors and event handlers) as an argument and returns a function that takes an initial state and returns a signalled state machine - the circuit.
 
 ```
-// a circuit with just one signalled value
-circuit = DOMCircuit({counter: ({counter}, value) => ({counter:counter + value})})({counter: 1})
+// a circuit with just one live handler
+circuit = DOMCircuit({
+  '#counter': ({counter}, value) => ({counter:counter + value})
+})({counter: 1})
 
 circuit.counter(4) // ==> {counter: 5}
 ```

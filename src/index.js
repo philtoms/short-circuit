@@ -1,4 +1,4 @@
-const DOMcircuit = (circuit, node, parent) => (state) => {
+const DOMcircuit = (circuit, element, parent) => (state) => {
   const reducers = [];
   const propagate = function (signalState, signal) {
     state =
@@ -23,26 +23,33 @@ const DOMcircuit = (circuit, node, parent) => (state) => {
   };
 
   return Object.entries(circuit).reduce((acc, [signal, reducer]) => {
-    const { selector, event, alias } = signal.match(
-      /(?<selector>[^$^@]+)(\s?@?(?<event>\w+))?\s?\$?(?<alias>\w+)?/
+    const { alias, domSelector } = signal.match(
+      /((?<alias>\w+):)?(\s*(?<domSelector>.+))?/
     ).groups;
+    const [selector, event] = domSelector.split(/\s*\.?on/);
 
     // normalise the signal address for state
     const address =
-      alias || (selector.startsWith('on') ? selector.slice(2) : selector);
+      alias ||
+      (selector.startsWith('on') ? selector.slice(2) : selector).replace(
+        /[#\.\-\[\]\(\)\"\=\^\&]/g,
+        ''
+      );
 
-    // query on parent node(s) unless selector is event
-    const elements = selector.startsWith('on')
-      ? node
-      : []
-          .concat(node || document)
-          .reduce(
-            (acc, node) => [
-              ...acc,
-              ...Array.from(node.querySelectorAll(selector)),
-            ],
-            []
-          );
+    // optionally query on parent element(s) unless selector is event
+    const elements = element
+      ? selector.startsWith('on')
+        ? element
+        : []
+            .concat(element || document)
+            .reduce(
+              (acc, element) => [
+                ...acc,
+                ...Array.from(element.querySelectorAll(selector)),
+              ],
+              []
+            )
+      : [];
 
     // a signal can be handled directly or passed through to a child circuit
     const children =
