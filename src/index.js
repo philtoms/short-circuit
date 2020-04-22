@@ -55,13 +55,13 @@ const DOMcircuit = (blueprint, element = [], parent) => (
         ''
       );
 
-    let _reducers = fromRoot(acc, selector.split('/').slice(1));
-    const deferring = !_reducers && selector.startsWith('../');
+    let deferReducers = fromRoot(acc, selector.split('/').slice(1));
+    const deferring = !deferredReducers && selector.startsWith('../');
     if (deferring) {
-      _reducers = [];
-      deferred.push([signal, reducer, _reducers]);
-    } else if (_reducers) {
-      deferredReducers.forEach((reducer) => _reducers.push(reducer));
+      deferReducers = [];
+      deferred.push([signal, reducer, deferReducers]);
+    } else if (deferReducers) {
+      deferredReducers.forEach((reducer) => deferReducers.push(reducer));
       return acc;
     }
     // optionally query on parent element(s) unless selector is event
@@ -82,7 +82,13 @@ const DOMcircuit = (blueprint, element = [], parent) => (
       typeof reducer !== 'function' &&
       DOMcircuit(reducer, elements, (value) =>
         propagate({ ...state, [address]: value }, address)
-      )(state[address] || {}, level + 1, _reducers || [], deferred, deferring);
+      )(
+        state[address] || {},
+        level + 1,
+        deferReducers || [],
+        deferred,
+        deferring
+      );
 
     reducers.push([
       address,
