@@ -1,4 +1,4 @@
-const DOMcircuit = (blueprint, element, parent) => (state) => {
+const DOMcircuit = (blueprint, element = [], parent) => (state) => {
   const reducers = [];
   const propagate = function (signalState, signal) {
     state =
@@ -37,19 +37,17 @@ const DOMcircuit = (blueprint, element, parent) => (state) => {
       );
 
     // optionally query on parent element(s) unless selector is event
-    const elements = element
-      ? selector.startsWith('on')
-        ? element
-        : []
-            .concat(element || document)
-            .reduce(
-              (acc, element) => [
-                ...acc,
-                ...Array.from(element.querySelectorAll(selector)),
-              ],
-              []
-            )
-      : [];
+    const elements = selector.startsWith('on')
+      ? element
+      : []
+          .concat(element)
+          .reduce(
+            (acc, element) => [
+              ...acc,
+              ...Array.from(element.querySelectorAll(selector)),
+            ],
+            []
+          );
 
     // a signal can be handled directly or passed through to a child circuit
     const children =
