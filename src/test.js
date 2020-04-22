@@ -33,56 +33,71 @@ describe('dom-circuit', () => {
     });
     it('should allow aliased signals in a deep circuit', () => {
       expect(
-        DOMCircuit({ 'X:#id': { 'Y:.class': { 'Z:.class': jest.fn() } } })({}).X
-          .Y.Z
-      ).toBeDefined();
-    });
-    it('should allow initialised state through aliased signals', () => {
-      const circuit = DOMCircuit({
-        'X:#id': { 'Y:.class': { 'Z:.class': jest.fn() } },
-      })({ X: { Y: { Z: 123 } } });
-      expect(circuit.state()).toEqual({ X: { Y: { Z: 123 } } });
+        'Z' in
+          DOMCircuit({ 'X:#id': { 'Y:.class': { 'Z:.class': jest.fn() } } })({})
+            .X.Y
+      ).toBe(true);
     });
     it('should allow whitespace in signal', () => {
-      expect(
-        DOMCircuit({ 'X:#id .class onevent': jest.fn() })({}).X
-      ).toBeDefined();
+      expect('X' in DOMCircuit({ 'X:#id .class onevent': jest.fn() })({})).toBe(
+        true
+      );
     });
     it('should strip invalid property chars', () => {
       expect(DOMCircuit({ '#id.class[x&="^123"]': jest.fn() })({}).idclassx123)
         .toBeDefined;
+    });
+    it('should provide read access to circuit state', () => {
+      const circuit = DOMCircuit({
+        'X:#id': { 'Y:.class': { 'Z:.class': jest.fn() } },
+      })({ X: { Y: { Z: 123 } } });
+      expect(circuit.state).toEqual({ X: { Y: { Z: 123 } } });
+    });
+    it('should provide read access to circuit signal state', () => {
+      const signal = DOMCircuit({ '#id': jest.fn() })({ id: 123 }).id;
+      expect(signal).toBe(123);
+    });
+    it('should provide read access to nested signal state', () => {
+      const signal = DOMCircuit({ '#id': { x: jest.fn() } })({ id: { x: 123 } })
+        .id.x;
+      expect(signal).toBe(123);
+    });
+    it('should provide read access to nested circuit signal state', () => {
+      const signal = DOMCircuit({ '#id': { x: jest.fn() } })({ id: { x: 123 } })
+        .id;
+      expect(signal.state).toEqual({ x: 123 });
     });
   });
 
   describe('reducer', () => {
     it('should expose signal reducer', () => {
       const x = jest.fn((state, value) => ({ ...state, '#id': value }));
-      DOMCircuit({ '#id': x })({ id: 123 }).id(456);
+      DOMCircuit({ '#id': x })({ id: 123 }).id = 456;
       expect(x).toHaveBeenCalledWith({ id: 123 }, 456);
     });
     it('should only reduce changed state', () => {
       const x = jest.fn((state, value) => ({ ...state, id: value }));
       const circuit = DOMCircuit({ '#id': x })({ id: 123 });
-      circuit.id(456);
-      circuit.id(456);
+      circuit.id = 456;
+      circuit.id = 456;
       expect(x).toHaveBeenCalledTimes(1);
     });
     it('should reduce all signals', () => {
-      const x = (state, value) => ({ ...state, id: value });
-      const y = (state, value) => ({ ...state, class: value });
-      const circus = DOMCircuit({ '#id': x, y })({ id: 123 });
-      circus.id(456);
-      circus.y(456);
-      expect(circus.state()).toEqual({
-        id: 456,
-        class: 456,
+      const x = (state, value) => ({ ...state, x: value });
+      const y = (state, value) => ({ ...state, y: value });
+      const circut = DOMCircuit({ x, y })({ x: 123, y: 123 });
+      circut.x = 456;
+      circut.y = 456;
+      expect(circut.state).toEqual({
+        x: 456,
+        y: 456,
       });
     });
     it('should reduce a deep circuit', () => {
-      const y = (state, value) => ({ ...state, class: value });
-      expect(
-        DOMCircuit({ '#id': { y } }, element)({ id: { class: 123 } }).id.y(456)
-      ).toEqual({ id: { class: 456 } });
+      const y = (state, value) => ({ ...state, y: value });
+      const circuit = DOMCircuit({ '#id': { x: { y } } }, element)({});
+      circuit.id.x.y = 456;
+      expect(circuit.state).toEqual({ id: { x: { y: 456 } } });
     });
   });
 
@@ -97,15 +112,15 @@ describe('dom-circuit', () => {
       };
       const circuit = DOMCircuit({ '#id.onclick': y }, element)({});
       handlers.click.call(element, { target: element });
-      expect(circuit.state()).toEqual(element);
+      expect(circuit.state).toEqual(element);
     });
     it('should bind an alias to a DOM element', () => {
       const y = function (state, { target }) {
         return target;
       };
       const circuit = DOMCircuit({ 'XXX:#id.onclick': y }, element)({});
-      circuit.XXX({ target: element });
-      expect(circuit.state()).toEqual(element);
+      circuit.XXX = { target: element };
+      expect(circuit.state).toEqual(element);
     });
     it('should bind a signal to a parent DOM element', () => {
       const y = function () {
@@ -113,7 +128,7 @@ describe('dom-circuit', () => {
       };
       const circuit = DOMCircuit({ '#id': { onclick: y } }, element)({});
       handlers.click.call(element, { target: element });
-      expect(circuit.state()).toEqual({
+      expect(circuit.state).toEqual({
         id: element,
       });
     });
@@ -136,11 +151,11 @@ describe('dom-circuit', () => {
         element
       )({});
       handlers.click1.call(element, { target: element });
-      expect(circuit.state()).toEqual({
+      expect(circuit.state).toEqual({
         id: element,
       });
       handlers.click2.call(element, { target: element });
-      expect(circuit.state()).toEqual({
+      expect(circuit.state).toEqual({
         id: element,
       });
     });
@@ -156,7 +171,7 @@ describe('dom-circuit', () => {
         element
       )({ id: { class: 123 } });
       handlers.click.call(element, { target: element });
-      expect(circuit.state()).toEqual({
+      expect(circuit.state).toEqual({
         id: element,
       });
     });
@@ -169,7 +184,7 @@ describe('dom-circuit', () => {
         element
       )({ id: { class: 123 } });
       handlers.click.call(element, { target: element });
-      expect(circuit.state()).toEqual({
+      expect(circuit.state).toEqual({
         id: {
           target: element,
           class: 123,
@@ -184,7 +199,7 @@ describe('dom-circuit', () => {
       DOMCircuit(
         { '#id': { y1, y2 } },
         element
-      )({ id: { y1: 123, y2: 123 } }).id.y1(456);
+      )({ id: { y1: 123, y2: 123 } }).id.y1 = 456;
       expect(y2).toHaveBeenCalledWith({ y1: 123, y2: 123 }, 456);
     });
     it('should halt propagation', () => {
@@ -194,31 +209,31 @@ describe('dom-circuit', () => {
       };
       const circuit = DOMCircuit({ '#id': { onclick: y } }, element)(initState);
       handlers.click.call(element, { target: element });
-      expect(circuit.state()).toEqual(initState);
+      expect(circuit.state).toBe(initState);
     });
     it('should jump state', () => {
       const y1 = (state, value) => {
-        circuit.x.y2(value);
+        circuit.x.y2 = value;
       };
       const y2 = (state, value) => ({ ...state, y2: value });
       const circuit = DOMCircuit(
         { 'x:#id': { y1, y2 } },
         element
       )({ x: { y1: 123, y2: 123 } });
-      circuit.x.y1(456);
-      expect(circuit.state()).toEqual({ x: { y1: 123, y2: 456 } });
+      circuit.x.y1 = 456;
+      expect(circuit.state).toEqual({ x: { y1: 123, y2: 456 } });
     });
     it('should merge jump state', () => {
       const y1 = (state, value) => {
-        return { ...state, y1: value, y2: circuit.x.y2(456).x.y2 };
+        return { ...state, y1: value, y2: (circuit.x.y2 = 456) };
       };
       const y2 = (state, value) => ({ ...state, y2: value });
       const circuit = DOMCircuit(
         { 'x:#id': { y1, y2 } },
         element
       )({ x: { y1: 123, y2: 123 } });
-      circuit.x.y1(456);
-      expect(circuit.state()).toEqual({ x: { y1: 456, y2: 456 } });
+      circuit.x.y1 = 456;
+      expect(circuit.state).toEqual({ x: { y1: 456, y2: 456 } });
     });
   });
 });
@@ -230,7 +245,8 @@ describe('README examples', () => {
     })({
       counter: 1,
     });
-    expect(circuit.counter(4)).toEqual({ counter: 5 });
+    circuit.counter = 4;
+    expect(circuit.state).toEqual({ counter: 5 });
   });
 
   describe('todos', () => {
@@ -246,7 +262,7 @@ describe('README examples', () => {
 
     const blueprint = {
       header: {
-        add: (state, value) => app.todos.update(value),
+        add: (state, value) => (app.todos.update = value),
       },
       '#todos': {
         update,
@@ -269,23 +285,23 @@ describe('README examples', () => {
     });
 
     it('should add an item', () => {
-      app.header.add({ text: 'todo 1' });
-      expect(app.state().todos).toEqual([{ id: 1, text: 'todo 1' }]);
+      app.header.add = { text: 'todo 1' };
+      expect(app.state.todos).toEqual([{ id: 1, text: 'todo 1' }]);
     });
     it('should update an item', () => {
-      app.header.add({ text: 'todo 1' });
-      app.todos.update({ text: 'todo 1 updated', id: 1 });
-      expect(app.state().todos).toEqual([{ id: 1, text: 'todo 1 updated' }]);
+      app.header.add = { text: 'todo 1' };
+      app.todos.update = { text: 'todo 1 updated', id: 1 };
+      expect(app.state.todos).toEqual([{ id: 1, text: 'todo 1 updated' }]);
     });
     it('should remove an item', () => {
-      app.header.add({ text: 'todo 1' });
-      app.todos.remove({ id: 1 });
-      expect(app.state().todos).toEqual([]);
+      app.header.add = { text: 'todo 1' };
+      app.todos.remove = { id: 1 };
+      expect(app.state.todos).toEqual([]);
     });
     it('should update counts', () => {
-      app.header.add({ text: 'todo 1' });
+      app.header.add = { text: 'todo 1' };
       handlers.change({ counts: 'x' });
-      expect(app.state().footer.counts).toEqual({ total: 1, done: 0 });
+      expect(app.state.footer.counts).toEqual({ total: 1, done: 0 });
     });
   });
 });

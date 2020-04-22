@@ -43,7 +43,7 @@ circuit = DOMCircuit({
   '#counter': ({counter}, value) => ({counter:counter + value})
 })({counter: 1})
 
-circuit.counter(4) // ==> {counter: 5}
+circuit.counter = 4 // ==> {counter: 5}
 ```
 
 The object passed into dom-circuit is a map of key-values that represent application state. Each key is a state address that can be signalled to change state. Its value is a reducer function that receives the current state and the signalled value and returns a new state. If the new state updates the or the state of another nested circuit.

@@ -1,8 +1,8 @@
-const DOMcircuit = (circuit, element, parent) => (state) => {
+const DOMcircuit = (blueprint, element, parent) => (state) => {
   const reducers = [];
   const propagate = function (signalState, signal) {
     state =
-      // halt propogation when signal is empty
+      // halt propagation when signal is empty
       signalState === undefined
         ? state
         : // reduce signal state into circuit state.
@@ -22,11 +22,11 @@ const DOMcircuit = (circuit, element, parent) => (state) => {
     return parent ? parent(state) : state;
   };
 
-  return Object.entries(circuit).reduce((acc, [signal, reducer]) => {
+  const circuit = Object.entries(blueprint).reduce((acc, [signal, reducer]) => {
     const { alias, domSelector } = signal.match(
-      /((?<alias>\w+):)?(\s*(?<domSelector>.+))?/
+      /((?<alias>[\w]+):)?(\s*(?<domSelector>.+))?/
     ).groups;
-    const [selector, event] = domSelector.split(/\s*\.?on/);
+    const [selector, event] = domSelector.split(/[\s\.]on/);
 
     // normalise the signal address for state
     const address =
@@ -80,12 +80,20 @@ const DOMcircuit = (circuit, element, parent) => (state) => {
       });
     }
 
-    return {
-      ...acc,
-      [address]: children || handler,
-      state: () => state,
-    };
+    return Object.defineProperty(acc, address, {
+      get() {
+        return children || state[address];
+      },
+      set(value) {
+        return handler(value)[address];
+      },
+    });
   }, {});
+  return Object.defineProperty(circuit, 'state', {
+    get() {
+      return state;
+    },
+  });
 };
 
 export default DOMcircuit;
