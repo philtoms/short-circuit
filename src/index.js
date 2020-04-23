@@ -6,8 +6,9 @@ const fromRoot = (circuit, [head, ...tail]) =>
     ? circuit[head][_REDUCERS]
     : false;
 
-const DOMcircuit = (blueprint, element = [], parent) => (
+const DOMcircuit = (blueprint, element = []) => (
   state,
+  parent,
   level = 1,
   reducers = [],
   deferred = [],
@@ -42,21 +43,20 @@ const DOMcircuit = (blueprint, element = [], parent) => (
   };
 
   const build = (acc, [signal, reducer, deferredReducers]) => {
-    const { alias, domSelector } = signal.match(
-      /((?<alias>[\w]+):)?(\s*(?<domSelector>.+))?/
+    const [_as, event] = signal.split(/\s?\/\//);
+    const { alias, selector = '' } = _as.match(
+      /((?<alias>[\w]+):)?(\s*(?<selector>.+))?/
     ).groups;
-    const [selector, event] = domSelector.split(/[\s\.]on/);
 
     // normalise the signal address for state
     const address =
       alias ||
-      (selector.startsWith('on') ? selector.slice(2) : selector).replace(
-        /[#\.\-\[\]\(\)\"\=\^\&]/g,
-        ''
-      );
+      (selector || event)
+        .replace(/^on/, '')
+        .replace(/[#\.\-\[\]\(\)\"\=\^\&\/]/g, '');
 
-    let deferReducers = fromRoot(acc, selector.split('/').slice(1));
-    const deferring = !deferredReducers && selector.startsWith('../');
+    let deferReducers = event && fromRoot(acc, event.split('/'));
+    const deferring = !deferredReducers && event && !event.startsWith('on');
     if (deferring) {
       deferReducers = [];
       deferred.push([signal, reducer, deferReducers]);
@@ -80,10 +80,9 @@ const DOMcircuit = (blueprint, element = [], parent) => (
     // a signal can be handled directly or passed through to a child circuit
     const children =
       typeof reducer !== 'function' &&
-      DOMcircuit(reducer, elements, (value) =>
-        propagate({ ...state, [address]: value }, address)
-      )(
+      DOMcircuit(reducer, elements)(
         state[address] || {},
+        (value) => propagate({ ...state, [address]: value }, address),
         level + 1,
         deferReducers || [],
         deferred,

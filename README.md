@@ -7,44 +7,78 @@ The smallest, least opinionated, opinionated state management for DOM applicatio
 It doesn't attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for fast-track binding to the minimal set of elements that influence an application's state and hence its behavior.
 
 ```
-import DOMCircuit from 'dom-circuit'
+import DOMcircuit from 'dom-circuit'
+import {update, remove, total, done} from './reducers.js;
 
-import {add, update, remove} from './todo-actions.js'
-
-const todos = DOMCircuit({
+const todo = DOMcircuit({
   header: {
-    add: todos.add
+    #add: (state, value) => (todo.items.update = value),
   },
-  '#todos: {
-    add,
-    todo: {
-      input: update
-      button: remove
-    }
+  '#items': {
+    update,
+    remove,
   },
   footer: {
-    count
+    'counts//todos': {
+      #total,
+      #done,
+    },
+  },
+});
+```
+
+Selectors (like header and #items above) can be CSS selectors, CSS events, javascript property names or any combination of them all.
+
+```
+circuit = DOMcirciut({
+  '.thumbs onclick': (state, {target}) => ({...state, selected:target.src}),
+  selected: ({selected}) => circuit.openViewer = selected,
+  '#viewer': {
+    open: ({open, ...rest}) => {...rest, open:!open}
+    'src:[data-image] onstate': function(
+      {src}
+      )
+    // already open
   }
-})({todos: []})
+})
 ```
 
 ```
-export const add => (todos, newItem) => [...todos, newItem]
-export const update => ()
+// reducers.js
+let nextId;
+
+export const update = (items, item) => [
+  ...remove(items, item),
+  { ...item, id: item.id || ++nextId },
+];
+
+export const remove = (items, { id }) => items.filter((todo) => todo.id !== id);
+
+export const total = (state, todos) => ({ ...state, total: items.length });
+
+export const done = (state, items) => ({
+  ...state,
+  done: items.reduce((count, { done }) => count + (done ? 1 : 0), 0),
+});
+
 ```
 
 ## How it works
 
-`dom-circuit` takes an object (a map of CSS selectors and event handlers) as an argument and returns a function that takes an initial state and returns a signalled state machine - the circuit.
+`dom-circuit` takes an object (a map of CSS selectors and reducers) as an argument and returns a function that takes an initial state and returns a live state machine - the circuit.
 
 ```
-// a circuit with just one live handler
+// a circuit with just one state and one reducer
 circuit = DOMCircuit({
-  '#counter': ({counter}, value) => ({counter:counter + value})
+  'counter': ({counter}, value) => ({counter:counter + value})
 })({counter: 1})
 
-circuit.counter = 4 // ==> {counter: 5}
+// the circuit exposes state as getter / setter properties
+console.log(circuit.counter) // 1
+circuit.counter = 4 // 5
 ```
+
+Circuit property keys can be CSS selectors:
 
 The object passed into dom-circuit is a map of key-values that represent application state. Each key is a state address that can be signalled to change state. Its value is a reducer function that receives the current state and the signalled value and returns a new state. If the new state updates the or the state of another nested circuit.
 
