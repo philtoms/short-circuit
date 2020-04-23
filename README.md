@@ -1,10 +1,10 @@
 # dom-circuit
 
-The smallest, least opinionated, opinionated state management for DOM applications and other kinds of state machine.
+The least opinionated, opinionated state management for DOM applications and other kinds of state machine.
 
 `dom-circuit` is not a framework or a library, but a small utility function that helps to bind DOM elements and their attributes into a live circuit.
 
-It doesn't attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for fast-track binding to the minimal set of elements that influence an application's state and hence its behavior.
+The following example leaves out the HTML markup detail and item handling logic of a TODO application and focuses on the state changes that might be expected when these two aspects are brought together.
 
 ```
 import DOMcircuit from 'dom-circuit'
@@ -12,14 +12,14 @@ import {update, remove, total, done} from './reducers.js;
 
 const todo = DOMcircuit({
   header: {
-    #add: (state, value) => (todo.items.update = value),
+    '#add onchange': (state, value) => (todo.items.update = value),
   },
   '#items': {
     update,
-    remove,
+    'remove onclick': remove,
   },
   footer: {
-    'counts//todos': {
+    'counts/items': {
       #total,
       #done,
     },
@@ -27,116 +27,77 @@ const todo = DOMcircuit({
 });
 ```
 
-Selectors (like header and #items above) can be CSS selectors, CSS events, javascript property names or any combination of them all.
-
-```
-circuit = DOMcirciut({
-  '.thumbs onclick': (state, {target}) => ({...state, selected:target.src}),
-  selected: ({selected}) => circuit.openViewer = selected,
-  '#viewer': {
-    open: ({open, ...rest}) => {...rest, open:!open}
-    'src:[data-image] onstate': function(
-      {src}
-      )
-    // already open
-  }
-})
-```
-
-```
-// reducers.js
-let nextId;
-
-export const update = (items, item) => [
-  ...remove(items, item),
-  { ...item, id: item.id || ++nextId },
-];
-
-export const remove = (items, { id }) => items.filter((todo) => todo.id !== id);
-
-export const total = (state, todos) => ({ ...state, total: items.length });
-
-export const done = (state, items) => ({
-  ...state,
-  done: items.reduce((count, { done }) => count + (done ? 1 : 0), 0),
-});
-
-```
+And that's really the point of `dom-circuit`. It doesn't attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for declaratively binding to the minimal set of elements that influence an application's state and hence its behavior.
 
 ## How it works
 
-`dom-circuit` takes an object (a map of CSS selectors and reducers) as an argument and returns a function that takes an initial state and returns a live state machine - the circuit.
+Circuits like the one above are constructed from `{selector: reducer}` and `{selector: circuit}` property types.
+
+Selectors can resolve to elements, circuit properties, events or any combination of them all - but always in structured order:
+
+`(alias:)? (/? selector)? (.?onevent)?` where:
+
+- alias - circuit identifier when selector is too noisy as in `xOpen:#x.open[arg=123]`
+- selector - one of
+  - valid DOM selector via querySelectorAll as in `'.classname > .classname'`
+  - XPath selector as in `/path/to/circuit/prop`
+- event - one of
+  - valid DOM eventListener prefixed by `\son` or `.on` as in `onclick` or `.onmousemove`
+  - as above + event options as in `onclick{passive: true}`
+
+Selectors can be distributed across circuit properties to facilitate multiple binding scenarios:
 
 ```
-// a circuit with just one state and one reducer
-circuit = DOMCircuit({
-  'counter': ({counter}, value) => ({counter:counter + value})
-})({counter: 1})
-
-// the circuit exposes state as getter / setter properties
-console.log(circuit.counter) // 1
-circuit.counter = 4 // 5
+{
+  '#items' :{ // binds to the element with `id=items`
+    onclick: (items, event) => // which item was clicked?...
+    onscroll: (items, event) => // er, scrolling now...
+    add: (items, value) => [...items, value]
+  }
+}
 ```
 
-Circuit property keys can be CSS selectors:
+Reducers follow the standard reducer argument pattern: `(state, value) => ({...state, value})`. The state passed into the reducer is the state of the immediate parent of the reducer property. Read only values on the full circuit state can be explicitly accessed as `circuit.state`.
 
-The object passed into dom-circuit is a map of key-values that represent application state. Each key is a state address that can be signalled to change state. Its value is a reducer function that receives the current state and the signalled value and returns a new state. If the new state updates the or the state of another nested circuit.
+Circuit state change can be actioned directly from within a reducer in several ways.
 
-State change is activated through signalling. Signals represent, and thus can be raised by:
-
-1. signal addressing - eg 'mySignal' a direct call to circuit.mySignal(value)
-2. CSS selectors - eg '#myForm.password' called through mutation observers
-3. DOM event listeners - eg 'onclick' called when parent selector is clicked or...
-4. any or all of the above - eg 'button@onclick:myButton'
-
-Signals bubble up through the circuit and state changes propagate downwards through the circuit.
-
-## Tips
-
-For performance reasons, `dom-circuit` only registers mutation observers for the pseudo `onmutation` signal, so
+### Return a new state directly
 
 ```
-// https://developer.mozilla.org/en-US/docs/Web/API/MutationObserverInit,
-myStateMachine = DOMCircuit({
-  counter@onmutation: (mutations => ...)(MutationObserverInit)
-})
-```
-
-```
-app = circuit({
   header: {
-    'node': {
-      click: e => e.target.value
-    },
-    '.class@mousemove': e => e.pageX,
-    'selector:alias@event': (state, value) => e.pageX,
+    #add: (state, value) => ({...state, add: value}),
   },
-  main: {
-    signal: handler
-    signal: ({header: {alias}}) => app.header.alias(alias + 1)
-  },
-  footer: {
-  },
-})(state)
 ```
 
-circuit actions
-circuits
-are signalled state machines
-are constructed from object graphs
-are connectable
-are object keys (`signal@event:alias`)
-signals
-constructed by one or all of
-signal = signal address
-:alias = optional alias address
-@event = optional signal binding
-eagerly map to
-events 'onevent'
-CSS selectors via cascade
-signal handlers
-are reducers = (state, value, idx) -> state
-are propagators
-returned state propagates through circuit
-return undefined to halt signal propagation
-reenter circuit via signal.path
+### Propagate a sibling state
+
+```
+  header: {
+    #add: (state, value) =>({...state, updated: true}),
+    updated: (state, value) => // reducer called with value === true
+  },
+```
+
+### Jump to a new state
+
+```
+  header: {
+    #add: (state, value) => (todos.items.update = value),
+  },
+  items: {
+    update: (items, value) => // reducer called with current items and new value
+  }
+```
+
+### Bind to deferred state change
+
+This pattern uses a simplified XPath syntax to bind a property to another state value change.
+
+```
+  header: {
+    #add: (state, value) => ({state, latest: value}),
+  },
+  items: {
+    '/header/add': (items, value) => // reducer called with current items and latest value
+  }
+```

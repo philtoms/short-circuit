@@ -2,13 +2,10 @@ const _REDUCERS = Symbol();
 const fromRoot = (circuit, [head, ...tail]) =>
   tail.length
     ? fromRoot(circuit[head], tail)
-    : circuit[head]
-    ? circuit[head][_REDUCERS]
-    : false;
+    : circuit[head] && circuit[head][_REDUCERS];
 
-const DOMcircuit = (blueprint, element = []) => (
+const DOMcircuit = (blueprint, element = [], parent) => (
   state,
-  parent,
   level = 1,
   reducers = [],
   deferred = [],
@@ -43,20 +40,20 @@ const DOMcircuit = (blueprint, element = []) => (
   };
 
   const build = (acc, [signal, reducer, deferredReducers]) => {
-    const [_as, event] = signal.split(/\s?\/\//);
-    const { alias, selector = '' } = _as.match(
-      /((?<alias>[\w]+):)?(\s*(?<selector>.+))?/
-    ).groups;
+    const [_0, _1, alias, _3, _se] = signal.match(/(([\w]+):)?(\s*(.+))?/);
+    const [selector, event] = _se.split(/[\s\.]on/);
 
     // normalise the signal address for state
     const address =
       alias ||
-      (selector || event)
-        .replace(/^on/, '')
-        .replace(/[#\.\-\[\]\(\)\"\=\^\&\/]/g, '');
+      (selector.startsWith('on') ? selector.slice(2) : selector).replace(
+        /[#\.\-\[\]\(\)\"\=\^\&\/]/g,
+        ''
+      );
 
-    let deferReducers = event && fromRoot(acc, event.split('/'));
-    const deferring = !deferredReducers && event && !event.startsWith('on');
+    let deferReducers =
+      selector.startsWith('/') && fromRoot(acc, selector.slice(1).split('/'));
+    const deferring = !deferredReducers && selector.startsWith('/');
     if (deferring) {
       deferReducers = [];
       deferred.push([signal, reducer, deferReducers]);
@@ -80,9 +77,10 @@ const DOMcircuit = (blueprint, element = []) => (
     // a signal can be handled directly or passed through to a child circuit
     const children =
       typeof reducer !== 'function' &&
-      DOMcircuit(reducer, elements)(
+      DOMcircuit(reducer, elements, (value) =>
+        propagate({ ...state, [address]: value }, address)
+      )(
         state[address] || {},
-        (value) => propagate({ ...state, [address]: value }, address),
         level + 1,
         deferReducers || [],
         deferred,

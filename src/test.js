@@ -39,9 +39,9 @@ describe('dom-circuit', () => {
       ).toBe(true);
     });
     it('should allow whitespace in signal', () => {
-      expect(
-        'X' in DOMcircuit({ 'X:#id .class //onevent': jest.fn() })({})
-      ).toBe(true);
+      expect('X' in DOMcircuit({ 'X:#id .class onevent': jest.fn() })({})).toBe(
+        true
+      );
     });
     it('should strip invalid property chars', () => {
       expect(DOMcircuit({ '#id.class[x&="^123"]': jest.fn() })({}).idclassx123)
@@ -110,7 +110,7 @@ describe('dom-circuit', () => {
       const y = function () {
         return this;
       };
-      const circuit = DOMcircuit({ '#id//onclick': y }, element)({});
+      const circuit = DOMcircuit({ '#id onclick': y }, element)({});
       handlers.click.call(element, { target: element });
       expect(circuit.state).toEqual(element);
     });
@@ -118,7 +118,7 @@ describe('dom-circuit', () => {
       const y = function (state, { target }) {
         return target;
       };
-      const circuit = DOMcircuit({ 'XXX:#id//onclick': y }, element)({});
+      const circuit = DOMcircuit({ 'XXX:#id onclick': y }, element)({});
       circuit.XXX = { target: element };
       expect(circuit.state).toEqual(element);
     });
@@ -126,7 +126,7 @@ describe('dom-circuit', () => {
       const y = function () {
         return this;
       };
-      const circuit = DOMcircuit({ '#id': { '//onclick': y } }, element)({});
+      const circuit = DOMcircuit({ '#id': { onclick: y } }, element)({});
       handlers.click.call(element, { target: element });
       expect(circuit.state).toEqual({
         id: element,
@@ -136,7 +136,7 @@ describe('dom-circuit', () => {
       const y = function () {
         return this;
       };
-      DOMcircuit({ '.class': { '//onclick': y } }, element)({});
+      DOMcircuit({ '.class': { onclick: y } }, element)({});
       expect(element.addEventListener).toHaveBeenCalledTimes(2);
     });
     it('should bind multiple signals to a single DOM', () => {
@@ -147,7 +147,7 @@ describe('dom-circuit', () => {
         return this;
       };
       const circuit = DOMcircuit(
-        { '#id': { '//onclick1': y1, '//onclick2': y2 } },
+        { '#id': { onclick1: y1, onclick2: y2 } },
         element
       )({});
       handlers.click1.call(element, { target: element });
@@ -167,7 +167,7 @@ describe('dom-circuit', () => {
         return target;
       };
       const circuit = DOMcircuit(
-        { '#id': { '//onclick': y } },
+        { '#id': { onclick: y } },
         element
       )({ id: { class: 123 } });
       handlers.click.call(element, { target: element });
@@ -180,7 +180,7 @@ describe('dom-circuit', () => {
         return { ...state, target };
       };
       const circuit = DOMcircuit(
-        { '#id': { '//onclick': y } },
+        { '#id': { onclick: y } },
         element
       )({ id: { class: 123 } });
       handlers.click.call(element, { target: element });
@@ -234,10 +234,7 @@ describe('dom-circuit', () => {
       const y = function () {
         return;
       };
-      const circuit = DOMcircuit(
-        { '#id': { '//onclick': y } },
-        element
-      )(initState);
+      const circuit = DOMcircuit({ '#id': { onclick: y } }, element)(initState);
       handlers.click.call(element, { target: element });
       expect(circuit.state).toBe(initState);
     });
@@ -249,7 +246,7 @@ describe('dom-circuit', () => {
         return { ...state, s2: value };
       };
       const circuit = DOMcircuit(
-        { x: { y: { z: { s1 } } }, 'd//x': { s2 } },
+        { x: { y: { z: { s1 } } }, 'd:/x': { s2 } },
         element
       )({});
       circuit.x.y.z.s1 = 456;
@@ -291,7 +288,7 @@ describe('README examples', () => {
         remove,
       },
       footer: {
-        'counts//todos': {
+        'counts:/todos': {
           total,
           done,
         },
