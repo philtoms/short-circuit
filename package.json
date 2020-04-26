@@ -19,6 +19,7 @@
   "license": "ISC",
   "devDependencies": {
     "esm": "^3.2.25",
+    "husky": "^4.2.5",
     "jest": "^25.3.0",
     "terser": "^4.6.9"
   },
