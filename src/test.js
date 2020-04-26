@@ -258,12 +258,12 @@ describe('dom-circuit', () => {
 describe('README examples', () => {
   it('counter example', () => {
     const circuit = DOMcircuit({
-      counter: ({ counter }, value) => ({ counter: counter + value }),
+      'add:count': ({ count }, value) => ({ count: count + value }),
     })({
-      counter: 1,
+      count: 1,
     });
-    circuit.counter = 4;
-    expect(circuit.state).toEqual({ counter: 5 });
+    circuit.add(4);
+    expect(circuit.state).toEqual({ count: 5 });
   });
 
   describe('todos', () => {

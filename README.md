@@ -7,12 +7,12 @@ The least opinionated, opinionated state management for DOM applications and oth
 The following example leaves out the HTML markup detail and item handling logic of a TODO application and focuses on the state changes that might be expected when these two aspects are brought together.
 
 ```
-import DOMcircuit from 'dom-circuit'
+import circuit from 'dom-circuit'
 import {update, remove, total, done} from './reducers.js;
 
-const todo = DOMcircuit({
+const todo = circuit({
   header: {
-    '#add onchange': (state, value) => (todo.items.update = value),
+    '#add onchange': (state, value) => (todo.items.set_update(value)),
   },
   '#items': {
     update,
@@ -24,7 +24,7 @@ const todo = DOMcircuit({
       #done,
     },
   },
-});
+})({});
 ```
 
 And that's really the point of `dom-circuit`. It doesn't attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for declaratively binding to the minimal set of elements that influence an application's state and hence its behavior.
@@ -33,7 +33,7 @@ And that's really the point of `dom-circuit`. It doesn't attempt to abstract ove
 
 Circuits like the one above are constructed from `{selector: reducer}` and `{selector: circuit}` property types.
 
-Selectors can resolve to elements, circuit properties, events or any combination of them all - but always in structured order:
+Selectors can resolve to elements, circuit identifiers, events or any combination of them all - but always in structured order:
 
 `(alias:)? (/? selector)? (.?onevent)?` where:
 
@@ -45,7 +45,7 @@ Selectors can resolve to elements, circuit properties, events or any combination
   - valid DOM eventListener prefixed by `\son` or `.on` as in `onclick` or `.onmousemove`
   - as above + event options as in `onclick{passive: true}`
 
-Selectors can be distributed across circuit properties to facilitate multiple binding scenarios:
+Selectors can be applied across circuit properties to facilitate multiple binding scenarios:
 
 ```
 {
@@ -57,7 +57,30 @@ Selectors can be distributed across circuit properties to facilitate multiple bi
 }
 ```
 
-Reducers follow the standard reducer argument pattern: `(state, value) => ({...state, value})`. The state passed into the reducer is the state of the immediate parent of the reducer property. Read only values on the full circuit state can be explicitly accessed as `circuit.state`.
+Each circuit identifier takes the value of the selector as its name. When this is not semantically appropriate or logical, an alias can be used.
+
+```
+circuit({
+  'add:count' (({count}, value) => ({count: count + value}))
+})({count: 1})
+
+circuit.add(1) // => 2
+```
+
+Reducers follow the standard reducer argument pattern: `(state, value) => ({...state, value})`. The state passed into the reducer is the state of the immediate parent of the reducer property.
+
+The value returned by the reducer will propagate through the circuit, bubbling up until it hits the circuit terminal function - an optional function that receives the changed circuit state:
+
+```
+const terminal = state => console.log(state)
+circuit({
+  'add: count': ({ count }, value) => ({ count: count + value }),
+}, terminal)({
+  count: 1,
+});
+
+circuit.add(1) // {count: 2}
+```
 
 Circuit state change can be actioned directly from within a reducer in several ways.
 
@@ -69,6 +92,8 @@ Circuit state change can be actioned directly from within a reducer in several w
   },
 ```
 
+State change propagation will bubble up through the circuit until it reaches the circuit terminal:
+
 ### Propagate a sibling state
 
 ```
@@ -78,16 +103,23 @@ Circuit state change can be actioned directly from within a reducer in several w
   },
 ```
 
+State change propagation will be further reduced by sibling reducer(s) before bubbling up through the circuit until it reaches the circuit terminal.
+
 ### Jump to a new state
 
 ```
   header: {
-    #add: (state, value) => (todos.items.update = value),
+    #add: (state, value) => {
+      todos.items.set_update(value)
+      return // no return value
+    }
   },
   items: {
     update: (items, value) => // reducer called with current items and new value
   }
 ```
+
+State change propagation will jump to the referenced circuit reducer and then bubble up from that point until it reaches the circuit terminal.
 
 ### Bind to deferred state change
 
@@ -95,9 +127,11 @@ This pattern uses a simplified XPath syntax to bind a property to another state 
 
 ```
   header: {
-    #add: (state, value) => ({state, latest: value}),
+    #update: (state, value) => ({state, latest: value}),
   },
   items: {
-    '/header/add': (items, value) => // reducer called with current items and latest value
+    '/header/update': (items, value) => // reducer called with current items and latest update value
   }
 ```
+
+State change propagation will be further reduced by deferred reducer(s) before bubbling up through the circuit until it reaches the circuit terminal. The deferred reducer will receive its own current state and the reduced state value from the initiating reducer.

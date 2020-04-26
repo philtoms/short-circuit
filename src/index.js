@@ -1,19 +1,24 @@
 const _REDUCERS = Symbol();
+const document = typeof window !== 'undefined' && window.document;
 const fromRoot = (circuit, [head, ...tail]) =>
   tail.length
     ? fromRoot(circuit[head], tail)
     : circuit[head] && circuit[head][_REDUCERS];
 
-const DOMcircuit = (blueprint, element = [], parent) => (
+const DOMcircuit = (blueprint, terminal, element) => (
   state,
   level = 1,
   reducers = [],
   deferred = [],
   deferredChild
 ) => {
+  if (!element && typeof terminal !== 'function') {
+    element = terminal || [];
+    terminal = false;
+  }
   const propagate = function (signalState, signal, deferred) {
     deferred
-      ? parent((state = signalState))
+      ? terminal((state = signalState))
       : (state =
           // halt propagation when signal is empty
           signalState === undefined
@@ -36,7 +41,7 @@ const DOMcircuit = (blueprint, element = [], parent) => (
                 state
               ));
 
-    return parent ? parent(state) : state;
+    return terminal ? terminal(state) : state;
   };
 
   const build = (acc, [signal, reducer, deferredReducers]) => {
@@ -45,7 +50,7 @@ const DOMcircuit = (blueprint, element = [], parent) => (
 
     // normalise the signal address for state
     const address =
-      alias ||
+      (!(selector in state) && alias) ||
       (selector.startsWith('on') ? selector.slice(2) : selector).replace(
         /[#\.\-\[\]\(\)\"\=\^\&\/]/g,
         ''
@@ -65,7 +70,7 @@ const DOMcircuit = (blueprint, element = [], parent) => (
     const elements = selector.startsWith('on')
       ? element
       : []
-          .concat(element)
+          .concat(element || document)
           .reduce(
             (circuit, element) => [
               ...circuit,
@@ -77,8 +82,10 @@ const DOMcircuit = (blueprint, element = [], parent) => (
     // a signal can be handled directly or passed through to a child circuit
     const children =
       typeof reducer !== 'function' &&
-      DOMcircuit(reducer, elements, (value) =>
-        propagate({ ...state, [address]: value }, address)
+      DOMcircuit(
+        reducer,
+        (value) => propagate({ ...state, [address]: value }, address),
+        elements
       )(
         state[address] || {},
         level + 1,
@@ -94,7 +101,7 @@ const DOMcircuit = (blueprint, element = [], parent) => (
             handler.call(this, value, true);
           }
         : children
-        ? parent
+        ? terminal
         : reducer,
       deferredChild,
     ]);
@@ -119,6 +126,7 @@ const DOMcircuit = (blueprint, element = [], parent) => (
         element.addEventListener(listener, handler);
       });
     }
+    acc[alias || `set_${address}`] = (value) => handler(value)[address];
     return Object.defineProperty(acc, address, {
       get() {
         return children || state[address];
@@ -132,7 +140,6 @@ const DOMcircuit = (blueprint, element = [], parent) => (
   const circuit = Object.entries(blueprint).reduce(build, {
     [_REDUCERS]: reducers,
   });
-
   return Object.defineProperty(
     level == 1 ? deferred.reduce(build, circuit) : circuit,
     'state',
