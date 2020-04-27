@@ -1,6 +1,6 @@
 const esmRequire = require('esm')(module);
 
-const DOMcircuit = esmRequire('./index.js').default;
+const { default: DOMcircuit, _CURRENT } = esmRequire('./index.js');
 
 let element;
 let handlers;
@@ -61,11 +61,6 @@ describe('dom-circuit', () => {
       const signal = DOMcircuit({ '#id': { x: jest.fn() } })({ id: { x: 123 } })
         .id.x;
       expect(signal).toBe(123);
-    });
-    it('should provide read access to nested circuit signal state', () => {
-      const signal = DOMcircuit({ '#id': { x: jest.fn() } })({ id: { x: 123 } })
-        .id;
-      expect(signal.state).toEqual({ x: 123 });
     });
   });
 
@@ -192,18 +187,17 @@ describe('dom-circuit', () => {
       });
     });
     it('should jump state', () => {
-      const y1 = (state, value) => {
-        circuit.x.y2 = value;
-      };
-      const y2 = (state, value) => ({ ...state, y2: value });
+      const y1 = (state) => ({ ...state, y1: 456 });
+      const y2 = (state) => ({ ...state, y2: 456 });
       const circuit = DOMcircuit(
         { 'x:#id': { y1, y2 } },
         element
       )({ x: { y1: 123, y2: 123 } });
-      circuit.x.y1 = 456;
-      expect(circuit.state).toEqual({ x: { y1: 123, y2: 456 } });
+      circuit.x.y1 = _CURRENT;
+      circuit.x.y2 = _CURRENT;
+      expect(circuit.state).toEqual({ x: { y1: 456, y2: 456 } });
     });
-    it('should merge jump state', () => {
+    it('should merge state in jump order', () => {
       const y1 = (state, value) => {
         return { ...state, y1: value, y2: (circuit.x.y2 = 456) };
       };
@@ -218,17 +212,6 @@ describe('dom-circuit', () => {
   });
 
   describe('propagation', () => {
-    it('should propagate sibling state', () => {
-      const y1 = function (state, value) {
-        return { ...state, y2: value };
-      };
-      const y2 = jest.fn();
-      DOMcircuit(
-        { '#id': { y1, y2 } },
-        element
-      )({ id: { y1: 123, y2: 123 } }).id.y1 = 456;
-      expect(y2).toHaveBeenCalledWith({ y1: 123, y2: 123 }, 456);
-    });
     it('should halt propagation', () => {
       const initState = { id: { class: 123 } };
       const y = function () {
@@ -251,6 +234,23 @@ describe('dom-circuit', () => {
       )({});
       circuit.x.y.z.s1 = 456;
       expect(circuit.state.d.s2).toEqual({ y: { z: { s1: 456 } } });
+    });
+    it('should propagate through to terminal', () => {
+      const s1 = function (state, value) {
+        return { ...state, s1: value };
+      };
+      const s2 = function (state, value) {
+        return { ...state, s2: value };
+      };
+      const terminal = jest.fn((state) => state);
+      const circuit = DOMcircuit(
+        { x: { y: { z: { s1 } } }, 'd:/x': { s2 } },
+        terminal,
+        element
+      )({});
+      debugger;
+      circuit.x.y.z.s1 = 456;
+      expect(terminal).toHaveBeenCalledWith(circuit.state, '/x/y/z/s1');
     });
   });
 });

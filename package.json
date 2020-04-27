@@ -2,9 +2,9 @@
   "name": "dom-circuit",
   "version": "1.0.0",
   "description": "DOM state machine as a live circuit",
-  "main": "min.js",
+  "main": "index.js",
   "scripts": {
-    "build": "terser ./src/index.js -c -m --mangle-props --module -o ./min.js",
+    "build": "terser ./src/index.js -c -m --mangle-props --module -o ./index.js",
     "test": "jest "
   },
   "author": "Phil Toms",
@@ -12,6 +12,7 @@
     "dom",
     "reducer",
     "state",
+    "state machine",
     "predictable",
     "functional",
     "immutable"

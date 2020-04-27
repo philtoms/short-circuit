@@ -5,8 +5,10 @@ const fromRoot = (circuit, [head, ...tail]) =>
     ? fromRoot(circuit[head], tail)
     : circuit[head] && circuit[head][_REDUCERS];
 
+export const _CURRENT = Symbol();
 const DOMcircuit = (blueprint, terminal, element) => (
   state,
+  stateId = '',
   level = 1,
   reducers = [],
   deferred = [],
@@ -16,9 +18,9 @@ const DOMcircuit = (blueprint, terminal, element) => (
     element = terminal || [];
     terminal = false;
   }
-  const propagate = function (signalState, signal, deferred) {
+  const propagate = function (signalState, signal, deferred, id) {
     deferred
-      ? terminal((state = signalState))
+      ? terminal((state = signalState), id)
       : (state =
           // halt propagation when signal is empty
           signalState === undefined
@@ -29,7 +31,7 @@ const DOMcircuit = (blueprint, terminal, element) => (
                   // deferred children handle their own state chains and will always
                   // be propagated after local state has reduced
                   deferred
-                    ? reducer.call(this, acc) || acc
+                    ? reducer.call(this, acc) && acc
                     : // signal identity check to filter signalled state change
                     address in state && signalState[address] === state[address]
                     ? acc
@@ -41,7 +43,7 @@ const DOMcircuit = (blueprint, terminal, element) => (
                 state
               ));
 
-    return terminal ? terminal(state) : state;
+    return terminal ? terminal(state, id) : state;
   };
 
   const build = (acc, [signal, reducer, deferredReducers]) => {
@@ -55,6 +57,8 @@ const DOMcircuit = (blueprint, terminal, element) => (
         /[#\.\-\[\]\(\)\"\=\^\&\/]/g,
         ''
       );
+
+    const id = `${stateId}/${address}`;
 
     let deferReducers =
       selector.startsWith('/') && fromRoot(acc, selector.slice(1).split('/'));
@@ -84,38 +88,43 @@ const DOMcircuit = (blueprint, terminal, element) => (
       typeof reducer !== 'function' &&
       DOMcircuit(
         reducer,
-        (value) => propagate({ ...state, [address]: value }, address),
+        (value, id) =>
+          propagate({ ...state, [address]: value }, address, false, id),
         elements
       )(
         state[address] || {},
+        id,
         level + 1,
         deferReducers || [],
         deferred,
         deferring
       );
 
+    const _handler = (deferred) =>
+      function (dvalue, value = dvalue) {
+        return value === state[address]
+          ? value
+          : propagate.call(
+              this,
+              children
+                ? value
+                : reducer.call(
+                    this,
+                    state,
+                    value === _CURRENT ? state[address] : value
+                  ),
+              address,
+              deferred,
+              id
+            );
+      };
+    const handler = _handler();
+
     reducers.push([
       address,
-      deferredChild
-        ? function (value) {
-            handler.call(this, value, true);
-          }
-        : children
-        ? terminal
-        : reducer,
+      deferredChild ? _handler(true) : children ? terminal : _handler(),
       deferredChild,
     ]);
-
-    const handler = function (value, deferred) {
-      return value === state[address]
-        ? value
-        : propagate.call(
-            this,
-            children ? value : reducer.call(this, state, value),
-            address,
-            deferred
-          );
-    };
 
     // bind element events to handler. Handler context (this) will be element
     if (event || selector.startsWith('on')) {
@@ -126,6 +135,7 @@ const DOMcircuit = (blueprint, terminal, element) => (
         element.addEventListener(listener, handler);
       });
     }
+
     acc[alias || `set_${address}`] = (value) => handler(value)[address];
     return Object.defineProperty(acc, address, {
       get() {
@@ -140,15 +150,13 @@ const DOMcircuit = (blueprint, terminal, element) => (
   const circuit = Object.entries(blueprint).reduce(build, {
     [_REDUCERS]: reducers,
   });
-  return Object.defineProperty(
-    level == 1 ? deferred.reduce(build, circuit) : circuit,
-    'state',
-    {
-      get() {
-        return state;
-      },
-    }
-  );
+  return level == 1
+    ? Object.defineProperty(deferred.reduce(build, circuit), 'state', {
+        get() {
+          return state;
+        },
+      })
+    : circuit;
 };
 
 export default DOMcircuit;
