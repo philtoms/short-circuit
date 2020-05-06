@@ -1,8 +1,10 @@
 # dom-circuit
 
-The least opinionated, opinionated state management for DOM applications and other kinds of state machine.
+A little state machine for Javascript applications that live on the DOM.
 
-`dom-circuit` is not a framework or a library, but a small utility function that helps to bind DOM elements and their attributes into a live circuit.
+`dom-circuit` is small utility function that weaves selected DOM elements into a state machine.
+
+The state machine acts like a live circuit where elements feed circuit input signals, state changes feed circuit outputs and ordinary reducers handle internal state logic.
 
 The following example leaves out the HTML markup detail and item handling logic of a TODO application and focuses on the state changes that might be expected when these two aspects are brought together.
 
@@ -11,53 +13,52 @@ import circuit from 'dom-circuit'
 import {update, remove, total, done} from './reducers.js;
 
 const todo = circuit({
-  header: {
-    '#add onchange': (state, value) => (todo.items.set_update(value)),
-  },
-  '#items': {
+  'add@change': (state, value) => (todo.items.update(value)),
+  'items': {
     update,
-    'remove onclick': remove,
+    'remove@click': remove,
   },
   footer: {
-    'counts/items': {
-      #total,
-      #done,
+    'counts:/items': {
+      total,
+      done,
     },
   },
 })({});
 ```
 
-And that's really the point of `dom-circuit`. It doesn't attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for declaratively binding to the minimal set of elements that influence an application's state and hence its behavior.
+And that's really the point of `dom-circuit`. It doesn't attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for declaratively binding the minimal set of elements that influence an application's state and hence its behavior.
 
 ## How it works
 
-Circuits like the one above are constructed from `{selector: reducer}` and `{selector: circuit}` property types.
+Circuits like the one above are constructed from `{signal: reducer}` and `{signal: circuit}` property types.
 
-Selectors can resolve to elements, circuit identifiers, events or any combination of them all - but always in structured order:
+Signals can resolve to elements, circuit identifiers, events or any combination of them all - but always in structured order:
 
-`(alias:)? (/? selector)? (.?onevent)?` where:
+`(alias:)? (/? selector)? (@event)?` where:
 
-- alias - circuit identifier when selector is too noisy as in `xOpen:#x.open[arg=123]`
+- alias - circuit identifier when signal is too noisy as in `xOpen:#x.open[arg=123]`
 - selector - one of
-  - valid DOM selector via querySelectorAll as in `'.classname > .classname'`
+  - lazy DOM selector as in `header` matches in precedence order: `.header`, `#header`, `header`
+  - valid DOM selector via querySelectorAll as in `.classname > .classname`
   - XPath selector as in `/path/to/circuit/prop`
 - event - one of
-  - valid DOM eventListener prefixed by `\son` or `.on` as in `onclick` or `.onmousemove`
-  - as above + event options as in `onclick{passive: true}`
+  - valid DOM eventListener prefixed by `@` as in `@click`
+  - as above + event options as in `@click{passive: true}`
 
-Selectors can be applied across circuit properties to facilitate multiple binding scenarios:
+Signals can be applied across circuit properties to facilitate multiple binding scenarios:
 
 ```
 {
-  '#items' :{ // binds to the element with `id=items`
-    onclick: (items, event) => // which item was clicked?...
-    onscroll: (items, event) => // er, scrolling now...
+  items: { // binds to the element with `class="items"`
+    @click: (items, event) => // which item was clicked?...
+    @scroll: (items, event) => // er, scrolling now...
     add: (items, value) => [...items, value]
   }
 }
 ```
 
-Each circuit identifier takes the value of the selector as its name. When this is not semantically appropriate or logical, an alias can be used.
+Each circuit identifier takes the value of the signal selector as its name. When this is not semantically appropriate or logical, an alias can be used.
 
 ```
 circuit({
@@ -72,33 +73,33 @@ Reducers follow the standard reducer argument pattern: `(state, value) => ({...s
 The value returned by the reducer will propagate through the circuit, bubbling up until it hits the circuit terminal function - an optional function that receives the changed circuit state:
 
 ```
-const terminal = state => console.log(state)
+const terminal = (state, id) => console.log(state, id)
 circuit({
   'add: count': ({ count }, value) => ({ count: count + value }),
 }, terminal)({
   count: 1,
 });
 
-circuit.add(1) // {count: 2}
+circuit.add(1) // logs the state and the current state id => ({count: 2}, '/count')
 ```
 
-Circuit state change can be actioned directly from within a reducer in several ways.
+Circuit state change can be actioned directly from within a reducer in several ways:
 
 ### Return a new state directly
 
 ```
   header: {
-    #add: (state, value) => ({...state, add: value}),
+    add: (state, value) => ({...state, add: value}),
   },
 ```
 
-State change propagation will bubble up through the circuit until it reaches the circuit terminal:
+State change propagation will bubble up through the circuit until it reaches the circuit terminal
 
 ### Propagate a sibling state
 
 ```
   header: {
-    #add: (state, value) =>({...state, updated: true}),
+    add: (state, value) =>({...state, updated: true}),
     updated: (state, value) => // reducer called with value === true
   },
 ```
@@ -109,8 +110,8 @@ State change propagation will be further reduced by sibling reducer(s) before bu
 
 ```
   header: {
-    #add: (state, value) => {
-      todos.items.set_update(value)
+    add: (state, value) => {
+      todos.items.update(value)
       return // no return value
     }
   },
@@ -127,10 +128,10 @@ This pattern uses a simplified XPath syntax to bind a property to another state 
 
 ```
   header: {
-    #update: (state, value) => ({state, latest: value}),
+    add: (state, value) => ({state, latest: value}),
   },
   items: {
-    '/header/update': (items, value) => // reducer called with current items and latest update value
+    '/header/add': (items, value) => // reducer called with current items and latest update value
   }
 ```
 
