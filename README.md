@@ -4,17 +4,17 @@ A little state machine for Javascript applications that live on the DOM.
 
 `dom-circuit` is small utility function that weaves selected DOM elements into a state machine.
 
-The state machine acts like a live circuit where elements feed circuit input signals, state changes feed circuit outputs and ordinary reducers handle internal state logic.
+The state machine acts like a live circuit where elements feed input signals, changes in state drive outputs and ordinary reducers handle state logic. The state machine is conveniently constructed in Javascript Object form.
 
 The following example leaves out the HTML markup detail and item handling logic of a TODO application and focuses on the state changes that might be expected when these two aspects are brought together.
 
 ```
 import circuit from 'dom-circuit'
-import {update, remove, total, done} from './reducers.js;
+import {update, remove, total, done} from './reducers.js';
 
 const todo = circuit({
   'add@change': (state, value) => (todo.items.update(value)),
-  'items': {
+  items: {
     update,
     'remove@click': remove,
   },
@@ -27,7 +27,7 @@ const todo = circuit({
 })({});
 ```
 
-And that's really the point of `dom-circuit`. It doesn't attempt to abstract over the DOM or its event system; nor does it provide any kind of event normalisation or facility to process event data. However, it does make a compelling case for declaratively binding the minimal set of elements that influence an application's state and hence its behavior.
+In the example above, the `add` signal will bind in precedence order to elements with a class-name, id or type equal to `add`. A `change` event listener is attached to the selected element and a signal will be generated whenever the handler is activated. The signalled reducer receives the current state and the new value. The new state is propagated through the circuit.
 
 ## How it works
 
@@ -80,7 +80,7 @@ circuit({
   count: 1,
 });
 
-circuit.add(1) // logs the state and the current state id => ({count: 2}, '/count')
+circuit.add(1) // logs the current state => ({count: 2}, '/count')
 ```
 
 Circuit state change can be actioned directly from within a reducer in several ways:

@@ -7,9 +7,11 @@ const fromRoot = (circuit, [head, ...tail]) =>
 
 export const _CURRENT = Symbol();
 
-const qPrec = ['.', '#', ''];
-const lazyQ = (e, s) =>
-  qPrec.reduce((acc, q) => (acc.length ? acc : e.querySelectorAll(q + s)), []);
+const lazyQuery = (e, s) =>
+  ['.', '#', ''].reduce(
+    (acc, q) => (acc.length ? acc : e.querySelectorAll(q + s)),
+    []
+  );
 
 const DOMcircuit = (blueprint, terminal, element) => (
   state,
@@ -79,7 +81,7 @@ const DOMcircuit = (blueprint, terminal, element) => (
           .reduce(
             (circuit, element) => [
               ...circuit,
-              ...Array.from(lazyQ(element, selector)),
+              ...Array.from(lazyQuery(element, selector)),
             ],
             []
           );
@@ -126,7 +128,7 @@ const DOMcircuit = (blueprint, terminal, element) => (
     return children
       ? Object.defineProperty(acc, address, {
           get() {
-            return children || state[address];
+            return children;
           },
         })
       : acc;

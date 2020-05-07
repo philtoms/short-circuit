@@ -263,63 +263,62 @@ describe('README examples', () => {
     expect(circuit.state).toEqual({ count: 5 });
   });
 
-  describe('todos', () => {
+  describe('todo', () => {
     let nextId;
-    const update = (todos, item) => [
-      ...remove(todos, item),
+    const update = (items, item) => [
+      ...remove(items, item),
       { ...item, id: item.id || ++nextId },
     ];
-    const remove = (todos, { id }) => todos.filter((todo) => todo.id !== id);
-    const total = (state, todos) => ({ ...state, total: todos.length });
-    const done = (state, todos) => ({
+    const remove = (items, { id }) => items.filter((todo) => todo.id !== id);
+    const total = (state, items) => ({ ...state, total: items.length });
+    const done = (state, items) => ({
       ...state,
-      done: todos.reduce((count, { done }) => count + (done ? 1 : 0), 0),
+      done: items.reduce((count, { done }) => count + (done ? 1 : 0), 0),
     });
 
     const blueprint = {
       header: {
-        add: (state, value) => app.todos.update(value),
+        add: (state, value) => todo.items.update(value),
       },
-      todos: {
+      items: {
         update,
         remove,
       },
       footer: {
-        'counts:/todos': {
+        'counts:/items': {
           total,
           done,
         },
       },
     };
-    let app;
+    let todo;
     beforeEach(() => {
       nextId = 0;
-      app = DOMcircuit(
+      todo = DOMcircuit(
         blueprint,
         element
-      )({ todos: [], footer: { counts: {} } });
+      )({ items: [], footer: { counts: {} } });
     });
 
     it('should add an item', () => {
-      debugger;
-      app.header.add({ text: 'todo 1' });
-      expect(app.state.todos).toEqual([{ id: 1, text: 'todo 1' }]);
+      todo.header.add({ text: 'todo 1' });
+      expect(todo.state.items).toEqual([{ id: 1, text: 'todo 1' }]);
     });
     it('should update an item', () => {
-      app.header.add({ text: 'todo 1' });
-      app.todos.update({ text: 'todo 1 updated', id: 1 });
-      expect(app.state.todos).toEqual([{ id: 1, text: 'todo 1 updated' }]);
+      todo.header.add({ text: 'todo 1' });
+      todo.items.update({ text: 'todo 1 updated', id: 1 });
+      expect(todo.state.items).toEqual([{ id: 1, text: 'todo 1 updated' }]);
     });
     it('should remove an item', () => {
-      app.header.add({ text: 'todo 1' });
-      app.todos.remove({ id: 1 });
-      expect(app.state.todos).toEqual([]);
+      todo.header.add({ text: 'todo 1' });
+      todo.items.remove({ id: 1 });
+      expect(todo.state.items).toEqual([]);
     });
     it('should update counts', () => {
-      app.header.add({ text: 'todo 1' });
-      app.header.add({ text: 'todo 2' });
-      app.todos.update({ text: 'todo 2 done', id: 2, done: true });
-      expect(app.state.footer.counts).toEqual({ total: 2, done: 1 });
+      todo.header.add({ text: 'todo 1' });
+      todo.header.add({ text: 'todo 2' });
+      todo.items.update({ text: 'todo 2 done', id: 2, done: true });
+      expect(todo.state.footer.counts).toEqual({ total: 2, done: 1 });
     });
   });
 });
