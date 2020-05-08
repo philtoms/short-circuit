@@ -226,7 +226,7 @@ describe('dom-circuit', () => {
         return { ...state, s2: value };
       };
       const circuit = DOMcircuit(
-        { x: { y: { z: { s1 } } }, 'd:/x': { s2 } },
+        { x: { y: { z: { s1 } } }, 'd@/x': { s2 } },
         element
       )({});
       circuit.x.y.z.s1(456);
@@ -241,7 +241,7 @@ describe('dom-circuit', () => {
       };
       const terminal = jest.fn((state) => state);
       const circuit = DOMcircuit(
-        { x: { y: { z: { s1 } } }, 'd:/x': { s2 } },
+        { x: { y: { z: { s1 } } }, 'd@/x': { s2 } },
         terminal,
         element
       )({});
@@ -285,7 +285,7 @@ describe('README examples', () => {
         remove,
       },
       footer: {
-        'counts:/items': {
+        'counts@/items': {
           total,
           done,
         },

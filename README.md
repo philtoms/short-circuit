@@ -19,7 +19,7 @@ const todo = circuit({
     'remove@click': remove,
   },
   footer: {
-    'counts:/items': {
+    'counts@/items': {
       total,
       done,
     },
@@ -35,16 +35,16 @@ Circuits like the one above are constructed from `{signal: reducer}` and `{signa
 
 Signals can resolve to elements, circuit identifiers, events or any combination of them all - but always in structured order:
 
-`(alias:)? (/? selector)? (@event)?` where:
+`(alias:)? (selector)? (@event)?` where:
 
 - alias - circuit identifier when signal is too noisy as in `xOpen:#x.open[arg=123]`
 - selector - one of
   - lazy DOM selector as in `header` matches in precedence order: `.header`, `#header`, `header`
   - valid DOM selector via querySelectorAll as in `.classname > .classname`
-  - XPath selector as in `/path/to/circuit/prop`
 - event - one of
   - valid DOM eventListener prefixed by `@` as in `@click`
   - as above + event options as in `@click{passive: true}`
+  - XPath selector prefixed by `@` as in `@/root/path/to/circuit/identifier`
 
 Signals can be applied across circuit properties to facilitate multiple binding scenarios:
 
@@ -124,14 +124,14 @@ State change propagation will jump to the referenced circuit reducer and then bu
 
 ### Bind to deferred state change
 
-This pattern uses a simplified XPath syntax to bind a property to another state value change.
+This pattern uses a simplified XPath syntax to bind a state change event to another state value change.
 
 ```
   header: {
     add: (state, value) => ({state, latest: value}),
   },
   items: {
-    '/header/add': (items, value) => // reducer called with current items and latest update value
+    '@/header/add': (items, value) => // reducer called with current items and latest update value
   }
 ```
 

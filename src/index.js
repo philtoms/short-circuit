@@ -54,18 +54,18 @@ const DOMcircuit = (blueprint, terminal, element) => (
 
   const build = (acc, [signal, reducer, deferredReducers]) => {
     const [_0, _1, alias, _3, _se] = signal.match(/(([\w]+):)?(\s*(.+))?/);
-    const [selector, event] = _se.split('@');
+    const [selector, event = ''] = _se.split('@');
 
     // normalise the signal address for state
     const address =
       (!(selector in state) && alias) ||
-      selector.replace(/[#\.\-\[\]\(\)\"\=\^\&\/]/g, '');
+      selector.replace(/[#\.\-\[\]\(\)\"\=\^\&]/g, '');
 
     const id = `${stateId}/${address}`;
 
     let deferReducers =
-      selector.startsWith('/') && fromRoot(acc, selector.slice(1).split('/'));
-    const deferring = !deferredReducers && selector.startsWith('/');
+      event.startsWith('/') && fromRoot(acc, event.slice(1).split('/'));
+    const deferring = !deferredReducers && event.startsWith('/');
     if (deferring) {
       deferReducers = [];
       deferred.push([signal, reducer, deferReducers]);
@@ -118,7 +118,7 @@ const DOMcircuit = (blueprint, terminal, element) => (
     reducers.push([address, children ? terminal : handler, deferredChild]);
 
     // bind element events to handler. Handler context (this) will be element
-    if (event) {
+    if (event && !event.startsWith('/')) {
       elements.forEach((element) => {
         element.addEventListener(event, handler);
       });
