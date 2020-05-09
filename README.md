@@ -39,20 +39,22 @@ Signals can resolve to elements, circuit identifiers, events or any combination 
 
 - alias - circuit identifier when signal is too noisy as in `xOpen:#x.open[arg=123]`
 - selector - one of
-  - lazy DOM selector as in `header` matches in precedence order: `.header`, `#header`, `header`
+  - optimistic DOM selector as in `header` matches in precedence order: `.header`, `#header`, `header`
   - valid DOM selector via querySelectorAll as in `.classname > .classname`
 - event - one of
   - valid DOM eventListener prefixed by `@` as in `@click`
   - as above + event options as in `@click{passive: true}`
   - XPath selector prefixed by `@` as in `@/root/path/to/circuit/identifier`
+  - `@init` - initial state event
+  - `@state` - state change event
 
 Signals can be applied across circuit properties to facilitate multiple binding scenarios:
 
 ```
 {
   items: { // binds to the element with `class="items"`
-    @click: (items, event) => // which item was clicked?...
-    @scroll: (items, event) => // er, scrolling now...
+    '@click': (items, event) => // which item was clicked?...
+    '@scroll': (items, event) => // er, scrolling now...
     add: (items, value) => [...items, value]
   }
 }

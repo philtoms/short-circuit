@@ -7,15 +7,17 @@ const fromRoot = (circuit, [head, ...tail]) =>
 
 export const _CURRENT = Symbol();
 
-const lazyQuery = (e, s) =>
+const optimisticQuery = (e, s) =>
   ['.', '#', ''].reduce(
     (acc, q) => (acc.length ? acc : e.querySelectorAll(q + s)),
     []
   );
 
 const DOMcircuit = (blueprint, terminal, element) => (
-  state,
+  state = {},
   stateId = '',
+  parentState,
+  parentAddress,
   reducers = [],
   deferred = [],
   deferredChild
@@ -49,19 +51,20 @@ const DOMcircuit = (blueprint, terminal, element) => (
                 state
               ));
 
+    state = blueprint['@state']
+      ? blueprint['@state'](state, signalState)
+      : state;
     return terminal ? terminal(state, id) : state;
   };
 
   const build = (acc, [signal, reducer, deferredReducers]) => {
-    const [_0, _1, alias, _3, _se] = signal.match(/(([\w]+):)?(\s*(.+))?/);
+    const [, , alias, , _se] = signal.match(/(([\w]+):)?(\s*(.+))?/);
     const [selector, event = ''] = _se.split('@');
-
-    // normalise the signal address for state
-    const address =
-      (!(selector in state) && alias) ||
-      selector.replace(/[#\.\-\[\]\(\)\"\=\^\&]/g, '');
-
-    const id = `${stateId}/${address}`;
+    if (event === 'init') {
+      state = reducer(state);
+      parentState[parentAddress] = state;
+      return acc;
+    }
 
     let deferReducers =
       event.startsWith('/') && fromRoot(acc, event.slice(1).split('/'));
@@ -81,10 +84,16 @@ const DOMcircuit = (blueprint, terminal, element) => (
           .reduce(
             (circuit, element) => [
               ...circuit,
-              ...Array.from(lazyQuery(element, selector)),
+              ...Array.from(optimisticQuery(element, selector)),
             ],
             []
           );
+
+    // normalise the signal address for state
+    const address =
+      (elements.length && alias) ||
+      selector.replace(/[#\.\-\[\]\(\)\"\=\^\&]/g, '');
+    const id = `${stateId}/${address}`;
 
     // a signal can be handled directly or passed through to a child circuit
     const children =
@@ -94,7 +103,15 @@ const DOMcircuit = (blueprint, terminal, element) => (
         (value, id) =>
           propagate({ ...state, [address]: value }, address, false, id),
         elements
-      )(state[address] || {}, id, deferReducers || [], deferred, deferring);
+      )(
+        state[address],
+        id,
+        state,
+        address,
+        deferReducers || [],
+        deferred,
+        deferring
+      );
 
     function handler(value) {
       // only propagate changed state
@@ -118,7 +135,7 @@ const DOMcircuit = (blueprint, terminal, element) => (
     reducers.push([address, children ? terminal : handler, deferredChild]);
 
     // bind element events to handler. Handler context (this) will be element
-    if (event && !event.startsWith('/')) {
+    if (event && !event.startsWith('/') && event !== 'state') {
       elements.forEach((element) => {
         element.addEventListener(event, handler);
       });

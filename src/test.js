@@ -34,8 +34,10 @@ describe('dom-circuit', () => {
     it('should allow aliased signals in a deep circuit', () => {
       expect(
         'Z' in
-          DOMcircuit({ 'X:id': { 'Y:class': { 'Z:class': jest.fn() } } })({}).X
-            .Y
+          DOMcircuit(
+            { 'X:id': { 'Y:class': { 'Z:.class': jest.fn() } } },
+            element
+          )({}).X.Y
       ).toBe(true);
     });
     it('should allow whitespace in signal', () => {
@@ -185,7 +187,7 @@ describe('dom-circuit', () => {
       const y1 = (state) => ({ ...state, y1: 456 });
       const y2 = (state) => ({ ...state, y2: 456 });
       const circuit = DOMcircuit(
-        { 'x:#id': { y1, y2 } },
+        { x: { y1, y2 } },
         element
       )({ x: { y1: 123, y2: 123 } });
       circuit.x.y1(_CURRENT);
@@ -200,7 +202,7 @@ describe('dom-circuit', () => {
       };
       const y2 = (state) => ({ ...state, y2: ++orderId });
       const circuit = DOMcircuit(
-        { 'x:#id': { y1, y2 } },
+        { x: { y1, y2 } },
         element
       )({ x: { y1: 123, y2: 123 } });
       circuit.x.y1(456);
@@ -209,6 +211,14 @@ describe('dom-circuit', () => {
   });
 
   describe('propagation', () => {
+    it('should propagate @event values', () => {
+      const y = function (s, { target: element }) {
+        return element;
+      };
+      const circuit = DOMcircuit({ id: { '@click': y } }, element)();
+      handlers.click.call(element, { target: element });
+      expect(circuit.state.id).toBe(element);
+    });
     it('should halt propagation', () => {
       const initState = { id: { class: 123 } };
       const y = function () {
@@ -233,10 +243,10 @@ describe('dom-circuit', () => {
       expect(circuit.state.d.s2).toEqual({ y: { z: { s1: 456 } } });
     });
     it('should propagate through to terminal', () => {
-      const s1 = function (state, value) {
+      const s1 = function (state) {
         return { ...state, s1: 1 };
       };
-      const s2 = function (state, value) {
+      const s2 = function (state) {
         return { ...state, s2: 2 };
       };
       const terminal = jest.fn((state) => state);
@@ -248,6 +258,30 @@ describe('dom-circuit', () => {
       circuit.x.y.z.s1(456);
       expect(terminal).toHaveBeenCalledWith({ d: { s2: 2 } }, '/d/s2');
       expect(terminal).toHaveBeenCalledWith(circuit.state, '/x/y/z/s1');
+    });
+    it('should propagate @state', () => {
+      const circuit = DOMcircuit({
+        id: {
+          x: (s, x) => ({ ...s, x }),
+          '@state': (state, value) => ({ ...value, x: 3 }),
+        },
+      })({});
+      debugger;
+      circuit.id.x(2);
+      expect(circuit.state).toEqual({ id: { x: 3 } });
+    });
+  });
+
+  describe('events', () => {
+    it('should merge @init into original state', () => {
+      const originalState = {
+        id: 1,
+      };
+      const circuit = DOMcircuit({
+        id: { '@init': (state) => state + 1 },
+      })(originalState);
+      expect(circuit.state).toBe(originalState);
+      expect(circuit.state).toEqual({ id: 2 });
     });
   });
 });
