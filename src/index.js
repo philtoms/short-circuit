@@ -27,29 +27,28 @@ const DOMcircuit = (blueprint, terminal, element) => (
     terminal = false;
   }
   const propagate = function (signalState, signal, deferred, id) {
+    // halt propagation when signal is empty
+    if (signalState === undefined) return state;
     deferred
       ? terminal((state = signalState), id)
       : (state =
-          // halt propagation when signal is empty
-          signalState === undefined
-            ? state
-            : // reduce signal state into circuit state.
-              reducers.reduce(
-                (acc, [address, reducer, deferred]) =>
-                  // deferred children handle their own state chains and will always
-                  // be propagated after local state has reduced
-                  deferred
-                    ? reducer.call(this, acc) && acc
-                    : // signal identity check to filter signalled state change
-                    address in state && signalState[address] === state[address]
-                    ? acc
-                    : address === signal
-                    ? signalState
-                    : address in signalState
-                    ? reducer.call(this, acc, signalState[address])
-                    : acc,
-                state
-              ));
+          // reduce signal state into circuit state.
+          reducers.reduce(
+            (acc, [address, reducer, deferred]) =>
+              // deferred children handle their own state chains and will always
+              // be propagated after local state has reduced
+              deferred
+                ? reducer.call(this, acc) && acc
+                : // signal identity check to filter signalled state change
+                address in state && signalState[address] === state[address]
+                ? acc
+                : address === signal
+                ? signalState
+                : address in signalState
+                ? reducer.call(this, acc, signalState[address])
+                : acc,
+            state
+          ));
 
     state = blueprint['@state']
       ? blueprint['@state'](state, signalState)

@@ -266,7 +266,6 @@ describe('dom-circuit', () => {
           '@state': (state, value) => ({ ...value, x: 3 }),
         },
       })({});
-      debugger;
       circuit.id.x(2);
       expect(circuit.state).toEqual({ id: { x: 3 } });
     });
