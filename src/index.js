@@ -1,5 +1,4 @@
 const _REDUCERS = Symbol();
-const document = typeof window !== 'undefined' && window.document;
 const fromRoot = (circuit, [head, ...tail]) =>
   tail.length
     ? fromRoot(circuit[head], tail)
@@ -7,13 +6,7 @@ const fromRoot = (circuit, [head, ...tail]) =>
 
 export const _CURRENT = Symbol();
 
-const optimisticQuery = (e, s) =>
-  ['.', '#', ''].reduce(
-    (acc, q) => (acc.length ? acc : e.querySelectorAll(q + s)),
-    []
-  );
-
-const DOMcircuit = (blueprint, terminal, element) => (
+const shortCircuit = (blueprint, terminal) => (
   state = {},
   stateId = '',
   parentState,
@@ -22,13 +15,13 @@ const DOMcircuit = (blueprint, terminal, element) => (
   deferred = [],
   deferredChild
 ) => {
-  if (!element && typeof terminal !== 'function') {
-    element = terminal || [];
-    terminal = false;
-  }
   const propagate = function (signalState, signal, deferred, id) {
-    // halt propagation when signal is empty
-    if (signalState === undefined) return state;
+    // halt propagation when signal is empty or unchanged
+    if (
+      signalState === undefined ||
+      (signal in state && signalState[signal] === state[signal])
+    )
+      return state;
     deferred
       ? terminal((state = signalState), id)
       : (state =
@@ -58,7 +51,7 @@ const DOMcircuit = (blueprint, terminal, element) => (
 
   const build = (acc, [signal, reducer, deferredReducers]) => {
     const [, , alias, , _se] = signal.match(/(([\w]+):)?(\s*(.+))?/);
-    const [selector, event = ''] = _se.split('@');
+    const [address, event = ''] = _se.split('@');
     if (event === 'init') {
       state = reducer(state);
       parentState[parentAddress] = state;
@@ -75,33 +68,14 @@ const DOMcircuit = (blueprint, terminal, element) => (
       deferredReducers.forEach((reducer) => deferReducers.push(reducer));
       return acc;
     }
-    // optionally query on parent element(s) unless selector is event
-    const elements = !selector
-      ? element
-      : []
-          .concat(element || document)
-          .reduce(
-            (circuit, element) => [
-              ...circuit,
-              ...Array.from(optimisticQuery(element, selector)),
-            ],
-            []
-          );
 
-    // normalise the signal address for state
-    const address =
-      (elements.length && alias) ||
-      selector.replace(/[#\.\-\[\]\(\)\"\=\^\&]/g, '');
     const id = `${stateId}/${address}`;
 
     // a signal can be handled directly or passed through to a child circuit
     const children =
       typeof reducer !== 'function' &&
-      DOMcircuit(
-        reducer,
-        (value, id) =>
-          propagate({ ...state, [address]: value }, address, false, id),
-        elements
+      shortCircuit(reducer, (value, id) =>
+        propagate({ ...state, [address]: value }, address, false, id)
       )(
         state[address],
         id,
@@ -113,32 +87,22 @@ const DOMcircuit = (blueprint, terminal, element) => (
       );
 
     function handler(value) {
-      // only propagate changed state
-      return value === state[address]
-        ? value
-        : propagate.call(
-            this,
-            children
-              ? value
-              : reducer.call(
-                  this,
-                  state,
-                  value === _CURRENT ? state[address] : value
-                ),
-            address,
-            deferredChild,
-            id
-          );
+      return propagate.call(
+        this,
+        children
+          ? value
+          : reducer.call(
+              this,
+              state,
+              value === _CURRENT ? state[address] : value
+            ),
+        address,
+        deferredChild,
+        id
+      );
     }
 
     reducers.push([address, children ? terminal : handler, deferredChild]);
-
-    // bind element events to handler. Handler context (this) will be element
-    if (event && !event.startsWith('/') && event !== 'state') {
-      elements.forEach((element) => {
-        element.addEventListener(event, handler);
-      });
-    }
 
     acc[alias || address] = (value) => handler(value)[address];
     return children
@@ -163,4 +127,4 @@ const DOMcircuit = (blueprint, terminal, element) => (
       });
 };
 
-export default DOMcircuit;
+export default shortCircuit;

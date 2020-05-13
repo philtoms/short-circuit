@@ -1,22 +1,23 @@
-# dom-circuit
+# short-circuit
 
-A little state machine for Javascript applications that live on the DOM.
+A little state machine for Javascript applications that prefer to live outside of the DOM.
 
-`dom-circuit` is small utility function that weaves selected DOM elements into a state machine.
+`short-circuit` is a cut down version of dom-circuit with element binding code stripped out leaving a tight, consistent state machine that organizes complex application logic into signal states.
 
-The state machine acts like a live circuit where elements feed input signals, changes in state drive outputs and ordinary reducers handle state logic. The state machine is conveniently constructed in Javascript Object form.
+Like its bigger brother, `short-circuit` acts like a live circuit where input signals drive state change through reducers into output signals. output signals propagate through the circuit until they arrive, fully reduced, at the circuit terminal.
 
-The following example leaves out the HTML markup detail and item handling logic of a TODO application and focuses on the state changes that might be expected when these two aspects are brought together.
+The following example leaves out the application render and item handling logic of a TODO application and focuses on the state changes that might be expected when these two aspects are brought together.
 
 ```
-import circuit from 'dom-circuit'
+import circuit from 'short-circuit'
 import {update, remove, total, done} from './reducers.js';
+import render from './render'
 
 const todo = circuit({
-  'add@change': (state, value) => (todo.items.update(value)),
+  add: (state, value) => (todo.items.update(value)),
   items: {
     update,
-    'remove@click': remove,
+    remove,
   },
   footer: {
     'counts@/items': {
@@ -24,41 +25,25 @@ const todo = circuit({
       done,
     },
   },
-})({});
+})(render);
 ```
 
-In the example above, the `add` signal will bind in precedence order to elements with a class-name, id or type equal to `add`. A `change` event listener is attached to the selected element and a signal will be generated whenever the handler is activated. The signalled reducer receives the current state and the new value. The new state is propagated through the circuit.
+In the example above, the `add`, `update` and `remove` signals are attached to appropriate React events. Each signalled reducer receives the current state and the new value. The new state is propagated through the circuit and passed into the render function.
 
 ## How it works
 
 Circuits like the one above are constructed from `{signal: reducer}` and `{signal: circuit}` property types.
 
-Signals can resolve to elements, circuit identifiers, events or any combination of them all - but always in structured order:
+Signals can resolve to circuit identifiers, events or both - but always in structured order:
 
 `(alias:)? (selector)? (@event)?` where:
 
-- alias - circuit identifier when signal is too noisy as in `xOpen:#x.open[arg=123]`
-- selector - one of
-  - optimistic DOM selector as in `header` matches in precedence order: `.header`, `#header`, `header`
-  - valid DOM selector via querySelectorAll as in `.classname > .classname`
+- alias - signal identifier for semantic override is as in `add:count`
+- selector - a circuit state identifier as in `count` accessed via `cct.state.count`
 - event - one of
-  - valid DOM eventListener prefixed by `@` as in `@click`
-  - as above + event options as in `@click{passive: true}`
-  - XPath selector prefixed by `@` as in `@/root/path/to/circuit/identifier`
+  - XPath selector prefixed by `@` as in `@/root/path/to/identifier`
   - `@init` - initial state event
   - `@state` - state change event
-
-Signals can be applied across circuit properties to facilitate multiple binding scenarios:
-
-```
-{
-  items: { // binds to the element with `class="items"`
-    '@click': (items, event) => // which item was clicked?...
-    '@scroll': (items, event) => // er, scrolling now...
-    add: (items, value) => [...items, value]
-  }
-}
-```
 
 Each circuit identifier takes the value of the signal selector as its name. When this is not semantically appropriate or logical, an alias can be used.
 
@@ -67,7 +52,7 @@ circuit({
   'add:count' (({count}, value) => ({count: count + value}))
 })({count: 1})
 
-circuit.add(1) // => 2
+circuit.add(1) // => state.count = 2
 ```
 
 Reducers follow the standard reducer argument pattern: `(state, value) => ({...state, value})`. The state passed into the reducer is the state of the immediate parent of the reducer property.
@@ -126,7 +111,7 @@ State change propagation will jump to the referenced circuit reducer and then bu
 
 ### Bind to deferred state change
 
-This pattern uses a simplified XPath syntax to bind a state change event to another state value change.
+This pattern uses a simplified XPath syntax to bind a state change event to another state value.
 
 ```
   header: {
