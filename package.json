@@ -1,7 +1,7 @@
 {
-  "name": "dom-circuit",
+  "name": "short-circuit",
   "version": "1.0.0",
-  "description": "DOM state machine as a live circuit",
+  "description": "state machine as a live circuit",
   "main": "index.js",
   "scripts": {
     "build": "terser ./src/index.js -c -m --mangle-props --module -o ./index.js",
@@ -9,7 +9,6 @@
   },
   "author": "Phil Toms",
   "keywords": [
-    "dom",
     "reducer",
     "state",
     "state machine",
