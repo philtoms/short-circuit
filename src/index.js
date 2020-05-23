@@ -6,7 +6,7 @@ const fromRoot = (circuit, [head, ...tail]) =>
 
 export const _CURRENT = Symbol();
 
-const shortCircuit = (blueprint, terminal) => (
+const shortCircuit = (circuit, terminal) => (
   state = {},
   parent = { id: '' },
   reducers = [],
@@ -44,8 +44,8 @@ const shortCircuit = (blueprint, terminal) => (
           state
         );
 
-    state = blueprint['@state']
-      ? blueprint['@state'](state, signalState[signal])
+    state = circuit['@state']
+      ? circuit['@state'](state, signalState[signal])
       : state;
 
     return terminal ? terminal(state, id) : state;
@@ -118,13 +118,13 @@ const shortCircuit = (blueprint, terminal) => (
       : acc;
   };
 
-  const circuit = Object.entries(blueprint).reduce(build, {
+  const signals = Object.entries(circuit).reduce(build, {
     [_REDUCERS]: reducers,
   });
 
   return parent.id
-    ? circuit
-    : Object.defineProperty(deferred.reduce(build, circuit), 'state', {
+    ? signals
+    : Object.defineProperty(deferred.reduce(build, signals), 'state', {
         get() {
           return state;
         },
