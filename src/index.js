@@ -8,44 +8,46 @@ export const _CURRENT = Symbol();
 
 const shortCircuit = (blueprint, terminal) => (
   state = {},
-  stateId = '',
-  parentState,
-  parentAddress,
+  parent = { id: '' },
   reducers = [],
   deferred = [],
   deferredChild
 ) => {
-  const propagate = function (signalState, signal, deferred, id) {
+  const propagate = (signalState, signal, deferred, id) => {
     // halt propagation when signal is empty or unchanged
     if (
       signalState === undefined ||
-      (signal in state && signalState[signal] === state[signal])
+      (signal in signalState && signalState[signal] === state[signal])
     )
       return state;
-    deferred
-      ? terminal((state = signalState), id)
-      : (state =
-          // reduce signal state into circuit state.
-          reducers.reduce(
-            (acc, [address, reducer, deferred]) =>
-              // deferred children handle their own state chains and will always
-              // be propagated after local state has reduced
-              deferred
-                ? reducer.call(this, acc) && acc
-                : // signal identity check to filter signalled state change
-                address in state && signalState[address] === state[address]
+
+    state = deferred
+      ? signalState
+      : // reduce signal state into circuit state.
+        reducers.reduce(
+          (acc, [address, handler, deferred]) =>
+            // deferred children handle their own state chains and will always
+            // be propagated after local state has been reduced
+            deferred
+              ? handler(acc) && acc
+              : address in signalState
+              ? signalState[address] === state[address]
                 ? acc
                 : address === signal
-                ? signalState
-                : address in signalState
-                ? reducer.call(this, acc, signalState[address])
-                : acc,
-            state
-          ));
+                ? { ...acc, [address]: signalState[signal] }
+                : (signalState = handler(
+                    signalState[address],
+                    true,
+                    signalState
+                  ))
+              : signalState,
+          state
+        );
 
     state = blueprint['@state']
-      ? blueprint['@state'](state, signalState)
+      ? blueprint['@state'](state, signalState[signal])
       : state;
+
     return terminal ? terminal(state, id) : state;
   };
 
@@ -54,7 +56,7 @@ const shortCircuit = (blueprint, terminal) => (
     const [address, event = ''] = _se.split('@');
     if (event === 'init') {
       state = reducer(state);
-      parentState[parentAddress] = state;
+      if (parent.state) parent.state[parent.address] = state;
       return acc;
     }
 
@@ -69,40 +71,42 @@ const shortCircuit = (blueprint, terminal) => (
       return acc;
     }
 
-    const id = `${stateId}/${address}`;
+    const id = `${parent.id}/${address}`;
 
     // a signal can be handled directly or passed through to a child circuit
     const children =
       typeof reducer !== 'function' &&
       shortCircuit(reducer, (value, id) =>
-        propagate({ ...state, [address]: value }, address, false, id)
+        propagate(
+          id.endsWith('/') ? value : { ...state, [address]: value },
+          address,
+          false,
+          id
+        )
       )(
-        state[address],
-        id,
-        state,
-        address,
+        typeof state[address] === 'object' ? state[address] : state,
+        { id, state, address },
         deferReducers || [],
         deferred,
         deferring
       );
 
-    function handler(value) {
-      return propagate.call(
-        this,
-        children
-          ? value
-          : reducer.call(
-              this,
-              state,
-              value === _CURRENT ? state[address] : value
-            ),
-        address,
-        deferredChild,
+    const handler = function (value, deferred, deferredState = state) {
+      if (value === _CURRENT) value = state[address];
+      const signal = address || parent.address;
+      return propagate(
+        children ? value : reducer.call({ signal }, deferredState, value),
+        address || parent.address,
+        deferredChild || deferred,
         id
       );
-    }
+    };
 
-    reducers.push([address, children ? terminal : handler, deferredChild]);
+    reducers.push([
+      address || parent.address,
+      children ? terminal : handler,
+      deferredChild,
+    ]);
 
     acc[alias || address] = (value) => handler(value)[address];
     return children
@@ -118,7 +122,7 @@ const shortCircuit = (blueprint, terminal) => (
     [_REDUCERS]: reducers,
   });
 
-  return stateId
+  return parent.id
     ? circuit
     : Object.defineProperty(deferred.reduce(build, circuit), 'state', {
         get() {

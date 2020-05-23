@@ -26,10 +26,6 @@ describe('short-circuit', () => {
         true
       );
     });
-    it('should strip invalid property chars', () => {
-      expect(shortCircuit({ 'id.class[x&="^123"]': jest.fn() })({}).idclassx123)
-        .toBeDefined;
-    });
     it('should provide read access to circuit state', () => {
       const circuit = shortCircuit({
         X: { Y: { Z: jest.fn() } },
@@ -61,6 +57,15 @@ describe('short-circuit', () => {
       circuit.id.x.y(456);
       expect(circuit.state).toEqual({ id: { x: { y: 456 } } });
     });
+    it('should expose signal to reducer', () => {
+      let signal;
+      const y = function () {
+        signal = this.signal;
+      };
+      const circuit = shortCircuit({ id: y })({});
+      circuit.id();
+      expect(signal).toBe('id');
+    });
   });
 
   describe('state change', () => {
@@ -69,7 +74,7 @@ describe('short-circuit', () => {
         id: 1,
       };
       const circuit = shortCircuit({
-        id: { '@init': (state) => state + 1 },
+        id: { '@init': (state) => state.id + 1 },
       })(originalState);
       expect(circuit.state).toBe(originalState);
       expect(circuit.state).toEqual({ id: 2 });
