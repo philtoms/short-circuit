@@ -16,39 +16,43 @@ const shortCircuit = (circuit, terminal) => (
   const propagate = (signalState, signal, deferred, id) => {
     // halt propagation when signal is empty or unchanged
     if (
-      signalState === undefined ||
+      !signalState ||
       (signal in signalState && signalState[signal] === state[signal])
     )
       return state;
 
-    state = deferred
+    const nextState = deferred
       ? signalState
       : // reduce signal state into circuit state.
-        reducers.reduce(
-          (acc, [address, handler, deferred]) =>
-            // deferred children handle their own state chains and will always
-            // be propagated after local state has been reduced
-            deferred
-              ? handler(acc) && acc
-              : address in signalState
-              ? signalState[address] === state[address]
-                ? acc
-                : address === signal
-                ? { ...acc, [address]: signalState[signal] }
-                : (signalState = handler(
-                    signalState[address],
-                    true,
-                    signalState
-                  ))
-              : signalState,
-          state
-        );
+        reducers.reduce((acc, [address, handler, deferred]) => {
+          // deferred children handle their own state chains and will always
+          // be propagated after local state has been reduced
+          acc = deferred
+            ? handler(acc) && state
+            : address in signalState
+            ? signalState[address] === acc[address]
+              ? acc
+              : address === signal
+              ? { ...acc, [address]: signalState[signal] }
+              : handler(signalState[address])
+            : signalState;
+          if (!(acc instanceof Promise)) state = acc;
+          return acc;
+        }, state);
+
+    // bale until fulfilled
+    if (nextState instanceof Promise) {
+      nextState.then((s) => {
+        return propagate(s, signal, false, id);
+      });
+      return state;
+    }
 
     state = circuit['@state']
-      ? circuit['@state'](state, signalState[signal])
-      : state;
+      ? circuit['@state'](nextState, signalState[signal])
+      : nextState;
 
-    return terminal ? terminal(state, id) : state;
+    return terminal ? terminal(state, id) || state : state;
   };
 
   const build = (acc, [signal, reducer, deferredReducers]) => {
@@ -91,13 +95,13 @@ const shortCircuit = (circuit, terminal) => (
         deferring
       );
 
-    const handler = function (value, deferred, deferredState = state) {
+    const handler = function (value) {
       if (value === _CURRENT) value = state[address];
       const signal = address || parent.address;
       return propagate(
-        children ? value : reducer.call({ signal }, deferredState, value),
+        children ? value : reducer.call({ signal }, state, value),
         address || parent.address,
-        deferredChild || deferred,
+        deferredChild,
         id
       );
     };

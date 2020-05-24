@@ -2,19 +2,19 @@
 
 A little state machine for Javascript applications that prefer to live outside of the DOM.
 
-`short-circuit` is a cut down version of dom-circuit with element binding code stripped out leaving a tight, consistent state machine that organizes complex application logic into signal states.
+`short-circuit` is a cut down version of dom-circuit with element binding code stripped out leaving a tight, consistent state machine that organizes complex application logic into predictable signal states.
 
 Like its bigger brother, `short-circuit` acts like a live circuit where input signals drive state change through reducers into output signals. Output signals propagate through the circuit until they arrive, fully reduced, at the circuit terminal.
 
 The following example leaves out the application render and item handling logic of a TODO application and focuses on the state changes that might be expected when these two aspects are brought together.
 
 ```
-import circuit from 'short-circuit'
+import circuit, {map} from 'short-circuit'
 import {update, remove, total, done} from './reducers.js';
 import render from './render'
 
 const todo = circuit({
-  add: (state, value) => (todo.items.update(value)),
+  add: map(value => (todo.items.update(value))),
   items: {
     update,
     remove,
@@ -28,7 +28,7 @@ const todo = circuit({
 })(render);
 ```
 
-In the example above, the `add`, `update` and `remove` signals are attached to appropriate React events. Each signalled reducer receives the current state and the new value. The new state is propagated through the circuit and passed into the render function.
+In the example above, the `add`, `update` and `remove` signals are attached to appropriate events. Each signalled reducer receives the current state and the new value. The new state is propagated through the circuit and passed into the render function.
 
 ## How it works
 
@@ -48,26 +48,26 @@ Signals can resolve to circuit identifiers, events or both - but always in struc
 Each circuit identifier takes the value of the signal selector as its name. When this is not semantically appropriate or logical, an alias can be used.
 
 ```
-circuit({
+const cct = circuit({
   'add:count' (({count}, value) => ({count: count + value}))
 })({count: 1})
 
-circuit.add(1) // => state.count = 2
+cct.add(1) // => state.count = 2
 ```
 
 Reducers follow the standard reducer argument pattern: `(state, value) => ({...state, value})`. The state passed into the reducer is the state of the immediate parent of the reducer property.
 
-The value returned by the reducer will propagate through the circuit, bubbling up until it hits the circuit terminal function - an optional function that receives the changed circuit state:
+The value returned by the reducer will propagate through the circuit, bubbling up until it hits the circuit terminal function - an optional function that receives the changed circuit state as a `{value, signal}` pair:
 
 ```
-const terminal = (state, id) => console.log(state, id)
-circuit({
+const terminal = (value, signal) => console.log(value, signal)
+const cct = circuit({
   'add: count': ({ count }, value) => ({ count: count + value }),
 }, terminal)({
   count: 1,
 });
 
-circuit.add(1) // logs the current state => ({count: 2}, '/count')
+cct.add(1) // logs the current state => ({count: 2}, '/count')
 ```
 
 Circuit state change can be actioned directly from within a reducer in several ways:
@@ -123,3 +123,18 @@ This pattern uses a simplified XPath syntax to bind a state change event to anot
 ```
 
 State change propagation will be further reduced by deferred reducer(s) before bubbling up through the circuit until it reaches the circuit terminal. The deferred reducer will receive its own current state and the reduced state value from the initiating reducer.
+
+## State change and signalling behavior
+
+`short-circuit` flattens internal state changes into a predicable output signal. If a terminal is attached to the circuit, the output signal sequence is guaranteed to be aligned with the order of internal state change. This guarantee holds through asynchronous operations.
+
+```
+const terminal = (value, signal) => console.log(signal)
+const cct = circuit({
+  state1: () => cct.state2(),
+  state2: () => Promise.resolve(cct.state3),
+  state3: () => Promise.resolve(state => ({...state, done: true}))
+}, terminal)();
+
+cct.state1() // logs => '/state1', '/state2', '/state3'
+```

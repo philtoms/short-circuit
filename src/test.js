@@ -154,6 +154,7 @@ describe('short-circuit', () => {
       expect(circuit.state).toBe(initState);
     });
     it('should propagate @state', () => {
+      debugger;
       const circuit = shortCircuit({
         id: {
           x: (s, x) => ({ ...s, x }),
@@ -163,6 +164,59 @@ describe('short-circuit', () => {
       circuit.id.x(2);
       expect(circuit.state).toEqual({ id: { x: 3 } });
     });
+  });
+});
+
+describe('async', () => {
+  it('should resolve at state change', async () => {
+    const circuit = shortCircuit({
+      x: (s, x) => Promise.resolve({ ...s, x: 2 }),
+    })({});
+    await circuit.x();
+    expect(await circuit.state).toEqual({ x: 2 });
+  });
+  it('should resolve at deep state change', async () => {
+    const circuit = shortCircuit({
+      id: {
+        x: (s, x) => Promise.resolve({ ...s, x }),
+      },
+    })({});
+    await circuit.id.x(2);
+    expect(circuit.state).toEqual({ id: { x: 2 } });
+  });
+
+  it('should resolve at terminal', async () => {
+    const terminal = async (state) => {
+      expect(state).toEqual({ id: { x: 2 } });
+    };
+    const circuit = shortCircuit(
+      {
+        id: {
+          x: (s, x) => Promise.resolve({ ...s, x }),
+        },
+      },
+      terminal
+    )({});
+    circuit.id.x(2);
+  });
+  it('should resolve sibling state change sequence at terminal', (done) => {
+    const terminal = (state, signal) => {
+      if (signal === '/id/z') {
+        expect(state).toEqual({ id: { x: 1, y: 2, z: 3 } });
+        done();
+      }
+    };
+    const circuit = shortCircuit(
+      {
+        id: {
+          x: (s, x) => Promise.resolve({ ...s, x, y: 1 }),
+          y: (s, y) => Promise.resolve({ ...s, y: y + 1, z: 2 }),
+          z: (s, z) => Promise.resolve({ ...s, z: z + 1 }),
+        },
+      },
+      terminal
+    )({});
+    circuit.id.x(1);
   });
 });
 
