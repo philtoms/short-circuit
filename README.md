@@ -2,7 +2,7 @@
 
 A little state machine for Javascript applications that prefer to live outside of the DOM.
 
-`short-circuit` is a cut down version of dom-circuit with element binding code stripped out leaving a tight, consistent state machine that organizes complex application logic into predictable signal states.
+`short-circuit` is a cut down version of dom-circuit with element binding code stripped out leaving a tight, declarative state machine that organizes complex application logic into predictable signal states.
 
 Like its bigger brother, `short-circuit` acts like a live circuit where input signals drive state change through reducers into output signals. Output signals propagate through the circuit until they arrive, fully reduced, at the circuit terminal.
 

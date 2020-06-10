@@ -21,6 +21,7 @@ const shortCircuit = (circuit, terminal) => (
     )
       return state;
 
+    const lastState = state;
     const nextState = deferred
       ? signalState
       : // reduce signal state into circuit state.
@@ -49,7 +50,7 @@ const shortCircuit = (circuit, terminal) => (
     }
 
     state = circuit['@state']
-      ? circuit['@state'](nextState, signalState[signal])
+      ? circuit['@state'](lastState, nextState)
       : nextState;
 
     return terminal ? terminal(state, id) || state : state;
