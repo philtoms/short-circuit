@@ -1,8 +1,11 @@
-const _REDUCERS = Symbol();
+const _REDUCERS = Symbol('_REDUCERS');
+const _ID = Symbol('_ID');
 const fromRoot = (circuit, [head, ...tail]) =>
   tail.length
     ? fromRoot(circuit[head], tail)
-    : circuit[head] && circuit[head][_REDUCERS];
+    : typeof circuit[head] === 'object'
+    ? [circuit[head][_REDUCERS], false]
+    : [circuit[_REDUCERS], _ID];
 
 export const _CURRENT = Symbol();
 
@@ -10,8 +13,8 @@ const shortCircuit = (circuit, terminal) => (
   state = {},
   parent = { id: '' },
   reducers = [],
-  deferred = [],
-  deferredChild
+  deferredSignals = [],
+  deferredSignal
 ) => {
   const propagate = (signalState, signal, deferred, id) => {
     // halt propagation when signal is empty or unchanged
@@ -20,16 +23,19 @@ const shortCircuit = (circuit, terminal) => (
       (signal in signalState && signalState[signal] === state[signal])
     )
       return state;
+    if (deferred === _ID) return signalState;
 
     const lastState = state;
     const nextState = deferred
       ? signalState
       : // reduce signal state into circuit state.
-        reducers.reduce((acc, [address, handler, deferred]) => {
-          // deferred children handle their own state chains and will always
-          // be propagated after local state has been reduced
-          acc = deferred
-            ? handler(acc) && state
+        reducers.reduce((acc, [address, handler, deferred, shared]) => {
+          acc = shared
+            ? { ...acc, ...handler(acc[signal], _ID) }
+            : // deferred children handle their own state chains and will
+            // always be propagated after local state has been reduced
+            deferred
+            ? handler(deferred === _ID ? acc[signal] : acc) && state
             : address in signalState
             ? signalState[address] === acc[address]
               ? acc
@@ -65,14 +71,20 @@ const shortCircuit = (circuit, terminal) => (
       return acc;
     }
 
-    let deferReducers =
-      event.startsWith('/') && fromRoot(acc, event.slice(1).split('/'));
+    let [resolvedReducers, deferredId] =
+      (event.startsWith('/') && fromRoot(acc, event.slice(1).split('/'))) || [];
     const deferring = !deferredReducers && event.startsWith('/');
     if (deferring) {
-      deferReducers = [];
-      deferred.push([signal, reducer, deferReducers]);
-    } else if (deferReducers) {
-      deferredReducers.forEach((reducer) => deferReducers.push(reducer));
+      resolvedReducers = [];
+      deferredSignals.push([signal, reducer, resolvedReducers]);
+    } else if (resolvedReducers) {
+      deferredReducers.forEach((reducer) =>
+        resolvedReducers.push([
+          ...reducer,
+          deferredId || true,
+          resolvedReducers === reducers,
+        ])
+      );
       return acc;
     }
 
@@ -91,26 +103,25 @@ const shortCircuit = (circuit, terminal) => (
       )(
         typeof state[address] === 'object' ? state[address] : state,
         { id, state, address },
-        deferReducers || [],
-        deferred,
+        resolvedReducers || [],
+        deferredSignals,
         deferring
       );
 
-    const handler = function (value) {
+    const handler = function (value, deferredId) {
       if (value === _CURRENT) value = state[address];
       const signal = address || parent.address;
       return propagate(
         children ? value : reducer.call({ signal }, state, value),
         address || parent.address,
-        deferredChild,
+        deferredId || deferredSignal,
         id
       );
     };
 
-    reducers.push([
+    ((typeof reducer === 'function' && resolvedReducers) || reducers).push([
       address || parent.address,
       children ? terminal : handler,
-      deferredChild,
     ]);
 
     acc[alias || address] = (value) => handler(value)[address];
@@ -129,7 +140,7 @@ const shortCircuit = (circuit, terminal) => (
 
   return parent.id
     ? signals
-    : Object.defineProperty(deferred.reduce(build, signals), 'state', {
+    : Object.defineProperty(deferredSignals.reduce(build, signals), 'state', {
         get() {
           return state;
         },
