@@ -62,7 +62,23 @@ describe('circuit', () => {
       };
       const cct = circuit({ id: y })({});
       cct.id();
-      expect(signal).toBe('id');
+      expect(signal).toBe('/id');
+    });
+    it('should expose base state to reducer', () => {
+      let state;
+      const z = function () {
+        state = this.state;
+      };
+      circuit({ x: { y: { z } } })({ a: 123 }).x.y.z();
+      expect(state).toEqual({ a: 123 });
+    });
+    it('should expose base signals to reducer', () => {
+      const z = function (state, value) {
+        this.a.b.c(value);
+      };
+      const c = jest.fn();
+      circuit({ x: { y: { z } }, a: { b: { c } } })({}).x.y.z(123);
+      expect(c).toHaveBeenCalledWith({}, 123);
     });
   });
 

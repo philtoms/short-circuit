@@ -9,8 +9,9 @@ const fromRoot = (circuit, [head, ...tail]) =>
 
 export const _CURRENT = Symbol();
 
-const shortCircuit = (circuit, terminal) => (
+const shortCircuit = (circuit, terminal, _circuit) => (
   state = {},
+  base = () => _circuit,
   parent = { id: '' },
   reducers = [],
   deferredSignals = [],
@@ -102,6 +103,7 @@ const shortCircuit = (circuit, terminal) => (
         )
       )(
         typeof state[address] === 'object' ? state[address] : state,
+        base,
         { id, state, address },
         resolvedReducers || [],
         deferredSignals,
@@ -110,9 +112,10 @@ const shortCircuit = (circuit, terminal) => (
 
     const handler = function (value, deferredId) {
       if (value === _CURRENT) value = state[address];
-      const signal = address || parent.address;
+      const cct = base();
+      cct.signal = id;
       return propagate(
-        children ? value : reducer.call({ signal }, state, value),
+        children ? value : reducer.call(cct, state, value),
         address || parent.address,
         deferredId || deferredSignal,
         id
@@ -138,13 +141,13 @@ const shortCircuit = (circuit, terminal) => (
     [_REDUCERS]: reducers,
   });
 
-  return parent.id
+  return (_circuit = parent.id
     ? signals
     : Object.defineProperty(deferredSignals.reduce(build, signals), 'state', {
         get() {
           return state;
         },
-      });
+      }));
 };
 
 export default shortCircuit;
