@@ -9,9 +9,9 @@ const fromRoot = (circuit, [head, ...tail]) =>
 
 export const _CURRENT = Symbol();
 
-const shortCircuit = (circuit, terminal, _circuit) => (
+const wireUp = (circuit, terminal, _base) => (
   state = {},
-  base = () => _circuit,
+  base = () => _base,
   parent = { id: '' },
   reducers = [],
   deferredSignals = [],
@@ -30,20 +30,25 @@ const shortCircuit = (circuit, terminal, _circuit) => (
     const nextState = deferred
       ? signalState
       : // reduce signal state into circuit state.
-        reducers.reduce((acc, [address, handler, deferred, shared]) => {
-          acc = shared
-            ? { ...acc, ...handler(acc[signal], _ID) }
-            : // deferred children handle their own state chains and will
-            // always be propagated after local state has been reduced
-            deferred
-            ? handler(deferred === _ID ? acc[signal] : acc) && state
-            : address in signalState
-            ? signalState[address] === acc[address]
+        reducers.reduce((acc, [address, event, handler, deferred, shared]) => {
+          acc =
+            event && address !== signal
               ? acc
-              : address === signal
-              ? { ...acc, [address]: signalState[signal] }
-              : handler(signalState[address])
-            : signalState;
+              : shared
+              ? { ...acc, ...handler(acc[signal], _ID, acc) }
+              : // deferred children handle their own state chains and will
+              // always be propagated after local state has been reduced
+              deferred
+              ? handler
+                ? handler(deferred === _ID ? acc[signal] : acc, true) && state
+                : acc
+              : address in signalState
+              ? signalState[address] === acc[address]
+                ? acc
+                : address === signal
+                ? { ...acc, [address]: signalState[signal] }
+                : handler(signalState[address])
+              : signalState;
           if (!(acc instanceof Promise)) state = acc;
           return acc;
         }, state);
@@ -56,8 +61,8 @@ const shortCircuit = (circuit, terminal, _circuit) => (
       return state;
     }
 
-    state = circuit['@state']
-      ? circuit['@state'](lastState, nextState)
+    state = circuit['$state']
+      ? circuit['$state'](lastState, nextState)
       : nextState;
 
     return terminal ? terminal(state, id) || state : state;
@@ -65,10 +70,10 @@ const shortCircuit = (circuit, terminal, _circuit) => (
 
   const build = (acc, [signal, reducer, deferredReducers]) => {
     const [, , alias, , _se] = signal.match(/(([\w]+):)?(\s*(.+))?/);
-    const [address, event = ''] = _se.split('@');
+    const [selector, event = ''] = _se.split('$');
     if (event === 'init') {
-      state = reducer(state);
-      if (parent.state) parent.state[parent.address] = state;
+      state = reducer(state[parent.address]);
+      parent.state[parent.address] = state;
       return acc;
     }
 
@@ -76,25 +81,29 @@ const shortCircuit = (circuit, terminal, _circuit) => (
       (event.startsWith('/') && fromRoot(acc, event.slice(1).split('/'))) || [];
     const deferring = !deferredReducers && event.startsWith('/');
     if (deferring) {
-      resolvedReducers = [];
-      deferredSignals.push([signal, reducer, resolvedReducers]);
+      if (typeof reducer !== 'function') {
+        resolvedReducers = [];
+        deferredSignals.push([signal, reducer, resolvedReducers]);
+      }
     } else if (resolvedReducers) {
-      deferredReducers.forEach((reducer) =>
+      deferredReducers.forEach(([s, e, r]) =>
         resolvedReducers.push([
-          ...reducer,
+          s,
+          e,
+          r,
           deferredId || true,
           resolvedReducers === reducers,
         ])
       );
       return acc;
     }
-
+    const address = selector;
     const id = `${parent.id}/${address}`;
 
     // a signal can be handled directly or passed through to a child circuit
     const children =
       typeof reducer !== 'function' &&
-      shortCircuit(reducer, (value, id) =>
+      wireUp(reducer, (value, id) =>
         propagate(
           id.endsWith('/') ? value : { ...state, [address]: value },
           address,
@@ -110,21 +119,24 @@ const shortCircuit = (circuit, terminal, _circuit) => (
         deferring
       );
 
-    const handler = function (value, deferredId) {
-      if (value === _CURRENT) value = state[address];
+    const handler = function (value, deferredId, acc = state) {
+      if (value === _CURRENT) value = acc[address];
       const cct = base();
       cct.signal = id;
       return propagate(
-        children ? value : reducer.call(cct, state, value),
+        children ? value : reducer.call(cct, acc, value),
         address || parent.address,
         deferredId || deferredSignal,
         id
       );
     };
 
-    ((typeof reducer === 'function' && resolvedReducers) || reducers).push([
+    reducers.push([
       address || parent.address,
+      event && !deferring,
       children ? terminal : handler,
+      !children && deferring && deferredId,
+      !children && deferring && resolvedReducers === reducers,
     ]);
 
     acc[alias || address] = (value) => handler(value)[address];
@@ -141,7 +153,7 @@ const shortCircuit = (circuit, terminal, _circuit) => (
     [_REDUCERS]: reducers,
   });
 
-  return (_circuit = parent.id
+  return (_base = parent.id
     ? signals
     : Object.defineProperty(deferredSignals.reduce(build, signals), 'state', {
         get() {
@@ -150,4 +162,4 @@ const shortCircuit = (circuit, terminal, _circuit) => (
       }));
 };
 
-export default shortCircuit;
+export default wireUp;
