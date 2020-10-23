@@ -22,7 +22,7 @@ describe('circuit', () => {
       ).toBe(true);
     });
     it('should allow whitespace in signal', () => {
-      expect('X' in circuit({ 'X:id class @event': jest.fn() })({})).toBe(true);
+      expect('X' in circuit({ 'X:id class $event': jest.fn() })({})).toBe(true);
     });
     it('should provide read access to cct state', () => {
       const cct = circuit({
@@ -83,16 +83,6 @@ describe('circuit', () => {
   });
 
   describe('state change', () => {
-    it('should merge @init into original state', () => {
-      const originalState = {
-        id: 1,
-      };
-      const cct = circuit({
-        id: { '@init': (state) => state.id + 1 },
-      })(originalState);
-      expect(cct.state).toBe(originalState);
-      expect(cct.state).toEqual({ id: 2 });
-    });
     it('should jump state', () => {
       const y1 = (state) => ({ ...state, y1: 456 });
       const y2 = (state) => ({ ...state, y2: 456 });
@@ -117,28 +107,36 @@ describe('circuit', () => {
       expect(cct.state).toEqual({ x: { y1: 2, y2: 1 } });
     });
   });
-
   describe('propagation', () => {
-    it('should propagate to deferred state', () => {
-      const s1 = function (state, value) {
-        return { ...state, y: value };
-      };
-      const s2 = function (state, value) {
-        return { ...state, d: value };
-      };
-      const cct = circuit({ x: { y: s1 }, 'd@/x/y': s2 })({});
-      cct.x.y(456);
-      expect(cct.state.x.y).toEqual(456);
-      expect(cct.state.d).toEqual(456);
+    it('should propagate through sibling state', () => {
+      const x = (state, value) => ({ ...state, x: value + 1 });
+      const y = () => ({ x: 1, y: 1 });
+      const cct = circuit({ x, y })({});
+      cct.y();
+      expect(cct.state).toEqual({ x: 2, y: 1 });
     });
-    it('should propagate to deferred sibling state', () => {
+    it('should not propagate unchanged sibling state', () => {
+      const x = (state, value) => ({ ...state, x: value + 1 });
+      const y = () => ({ x: 1, y: 1 });
+      const cct = circuit({ x, y })({ x: 1 });
+      cct.y();
+      expect(cct.state).toEqual({ x: 1, y: 1 });
+    });
+    it('should not propagate through sibling event', () => {
+      const x = (state, value) => ({ ...state, x: value + 1 });
+      const y = () => ({ x: 1, y: 1 });
+      const cct = circuit({ x$state: x, y })();
+      cct.y();
+      expect(cct.state).toEqual({ y: 1 });
+    });
+    it('should propagate to deferred state', () => {
       const s1 = function (state, value) {
         return { ...state, x: value };
       };
       const s2 = function (state, value) {
         return { ...state, d: value };
       };
-      const cct = circuit({ x: s1, 'd@/x': s2 })({});
+      const cct = circuit({ x: s1, 'd$/x': s2 })({ x: 1 });
       cct.x(456);
       expect(cct.state.x).toEqual(456);
       expect(cct.state.d).toEqual(456);
@@ -150,7 +148,7 @@ describe('circuit', () => {
       const s2 = function (state, value) {
         return { ...state, d: value };
       };
-      const cct = circuit({ x: s1, 'd@/x': { s2 } })({});
+      const cct = circuit({ x: s1, 'd$/x': { s2 } })({ x: 1 });
       cct.x(456);
       expect(cct.state.x).toEqual(456);
       expect(cct.state.d).toEqual(456);
@@ -162,9 +160,9 @@ describe('circuit', () => {
       const s2 = function (state, value) {
         return { ...state, s2: value };
       };
-      const cct = circuit({ x: { y: { z: { s1 } } }, 'd@/x': { s2 } })({});
+      const cct = circuit({ x: { y: { z: { s1 } } }, 'def$/x': { s2 } })({});
       cct.x.y.z.s1(456);
-      expect(cct.state.d.s2).toEqual({ y: { z: { s1: 456 } } });
+      expect(cct.state.def.s2).toEqual({ y: { z: { s1: 456 } } });
     });
     it('should propagate nested state to deeply deferred nested state', () => {
       const s1 = function (state, value) {
@@ -173,7 +171,7 @@ describe('circuit', () => {
       const s2 = function (state, value) {
         return { ...state, s2: value };
       };
-      const cct = circuit({ x: { y: { z: s1 } }, 'd@/x/y/z': { s2 } })({});
+      const cct = circuit({ x: { y: { z: s1 } }, 'd$/x/y/z': { s2 } })({});
       cct.x.y.z(456);
       expect(cct.state.d.s2).toEqual(456);
     });
@@ -186,7 +184,7 @@ describe('circuit', () => {
       };
       const terminal = jest.fn((state) => state);
       const cct = circuit(
-        { x: { y: { z: { s1 } } }, 'd@/x': { s2 } },
+        { x: { y: { z: { s1 } } }, 'd$/x': { s2 } },
         terminal
       )({});
       cct.x.y.z.s1(456);
@@ -212,16 +210,31 @@ describe('circuit', () => {
       expect(terminal).not.toHaveBeenCalled();
       expect(cct.state).toBe(initState);
     });
-    it('should propagate to @state', () => {
-      const cct = circuit({
-        '@state': (state, value) => ({ ...value, y: 3 }),
-        id: {
-          x: (s, x) => ({ ...s, x }),
-        },
-      })({});
-      cct.id.x(2);
-      expect(cct.state).toEqual({ id: { x: 2 }, y: 3 });
-    });
+  });
+});
+
+describe('events', () => {
+  it('should merge $init into original state', () => {
+    const originalState = {
+      id: 1,
+    };
+    const cct = circuit({
+      id: {
+        $init: (state) => state + 1,
+      },
+    })(originalState);
+    expect(cct.state).toBe(originalState);
+    expect(cct.state).toEqual({ id: 2 });
+  });
+  it('should propagate to $state', () => {
+    const cct = circuit({
+      $state: (state, value) => ({ ...value, y: 3 }),
+      id: {
+        x: (s, x) => ({ ...s, x }),
+      },
+    })({});
+    cct.id.x(2);
+    expect(cct.state).toEqual({ id: { x: 2 }, y: 3 });
   });
 });
 
@@ -311,7 +324,7 @@ describe('README examples', () => {
         remove,
       },
       footer: {
-        'counts@/items': {
+        'counts$/items': {
           total,
           done,
         },
