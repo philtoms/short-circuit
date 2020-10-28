@@ -55,35 +55,21 @@ describe('circuit', () => {
       cct.id.x.y(456);
       expect(cct.state).toEqual({ id: { x: { y: 456 } } });
     });
-    it('should expose signal to reducer', () => {
-      let signal;
+    it('should access signal context', () => {
+      let ctx;
       const y = function () {
-        signal = this.signal;
+        ctx = this;
+        ctx.value = (ctx.value || 0) + 1;
       };
       const cct = circuit({ id: y })({});
       cct.id();
-      expect(signal).toBe('/id');
-    });
-    it('should expose base state to reducer', () => {
-      let state;
-      const z = function () {
-        state = this.state;
-      };
-      circuit({ x: { y: { z } } })({ a: 123 }).x.y.z();
-      expect(state).toEqual({ a: 123 });
-    });
-    it('should expose base signals to reducer', () => {
-      const z = function (state, value) {
-        this.a.b.c(value);
-      };
-      const c = jest.fn();
-      circuit({ x: { y: { z } }, a: { b: { c } } })({}).x.y.z(123);
-      expect(c).toHaveBeenCalledWith({}, 123);
+      cct.id();
+      expect(ctx.value).toBe(2);
     });
   });
 
   describe('state change', () => {
-    it('should jump state', () => {
+    it('should jump state from root', () => {
       const y1 = (state) => ({ ...state, y1: 456 });
       const y2 = (state) => ({ ...state, y2: 456 });
       const cct = circuit({ x: { y1, y2 } })({
@@ -106,7 +92,33 @@ describe('circuit', () => {
       cct.x.y1(456);
       expect(cct.state).toEqual({ x: { y1: 2, y2: 1 } });
     });
+    it('should expose state signal id to reducer', () => {
+      let stateId;
+      const z = function () {
+        state = this.id;
+      };
+      circuit({ x: { y: { z } } })({ a: 123 }).x.y.z();
+      expect(state).toBe('/x/y/z');
+    });
+    it('should signal state internally', () => {
+      const z = function (state, value) {
+        this.signal('/a/b/c', value);
+      };
+      const c = jest.fn();
+      circuit({ x: { y: { z } }, a: { b: { c } } })({}).x.y.z(123);
+      expect(c).toHaveBeenCalledWith({}, 123);
+    });
+    it('should capture internal state change', () => {
+      const z = function (state, value) {
+        return this.signal('/a/b/c', value);
+      };
+      const c = (acc, c) => ({ ...acc, c });
+      const cct = circuit({ x: { y: { z } }, a: { b: { c } } })({});
+
+      expect(cct.x.y.z(123)).toEqual({ c: 123 });
+    });
   });
+
   describe('propagation', () => {
     it('should propagate through sibling state', () => {
       const x = (state, value) => ({ ...state, x: value + 1 });
@@ -211,83 +223,170 @@ describe('circuit', () => {
       expect(cct.state).toBe(initState);
     });
   });
-});
 
-describe('events', () => {
-  it('should merge $init into original state', () => {
-    const originalState = {
-      id: 1,
-    };
-    const cct = circuit({
-      id: {
-        $init: (state) => state + 1,
-      },
-    })(originalState);
-    expect(cct.state).toBe(originalState);
-    expect(cct.state).toEqual({ id: 2 });
+  describe('events', () => {
+    it('should merge $init into root state', () => {
+      const originalState = {
+        id: 1,
+      };
+      const cct = circuit({
+        $init: ({ id }) => ({ id: id + 1 }),
+      })(originalState);
+      expect(cct.state).toEqual({ id: 2 });
+    });
+    it('should merge $init into state', () => {
+      const originalState = {
+        id: 1,
+      };
+      const cct = circuit({
+        id: {
+          $init: (acc) => ({ ...acc, id: acc.id + 1 }),
+        },
+      })(originalState);
+      expect(cct.state).not.toBe(originalState);
+      expect(cct.state).toEqual({ id: 2 });
+    });
+    it('should merge $init into state prop', () => {
+      const originalState = {
+        id: 1,
+      };
+      const cct = circuit({
+        id$init: (acc) => ({ ...acc, id: acc.id + 1 }),
+      })(originalState);
+      expect(cct.state).toBe(originalState);
+      expect(cct.state).toEqual({ id: 2 });
+    });
+    it('should merge nested $init into root state', () => {
+      const originalState = {
+        id: 1,
+      };
+      const cct = circuit({
+        id: {
+          $init: ({ id }) => ({ id: id + 2 }),
+        },
+        $init: ({ id }) => ({ id: id * 2 }),
+      })(originalState);
+      expect(cct.state).toEqual({ id: 6 });
+    });
+    it('should FIX: nest order sensitivity', () => {
+      const originalState = {
+        id: 1,
+      };
+      const cct = circuit({
+        $init: ({ id }) => ({ id: id * 2 }),
+        id: {
+          $init: ({ id }) => ({ id: id + 2 }),
+        },
+      })(originalState);
+      expect(cct.state).toEqual({ id: 4 });
+    });
+    it('should propagate to root $state', () => {
+      const cct = circuit({
+        $state: (state) => ({ ...state, y: 3 }),
+        id: {
+          x: (s, x) => ({ ...s, x }),
+        },
+      })({});
+      cct.id.x(2);
+      expect(cct.state).toEqual({ id: { x: 2 }, y: 3 });
+    });
+    it('should propagate from nested $state', () => {
+      const cct = circuit({
+        $state: (state) => ({ ...state, z: state.id.y }),
+        id: {
+          x: (s, x) => ({ ...s, x }),
+          $state: (state) => ({ ...state, y: 3 }),
+        },
+      })({});
+      cct.id.x(2);
+      expect(cct.state).toEqual({ id: { x: 2, y: 3 }, z: 3 });
+    });
+    it('should include signal in $state', () => {
+      let signal1, signal2;
+      const cct = circuit({
+        $state: (state, signal) => (signal2 = signal),
+        id: {
+          x: (s, x) => ({ ...s, x }),
+          $state: (state, signal) => (signal1 = signal),
+        },
+      })({});
+      cct.id.x(2);
+      expect(signal1).toEqual('/id/x');
+      expect(signal1).toEqual(signal2);
+    });
   });
-  it('should propagate to $state', () => {
-    const cct = circuit({
-      $state: (state, value) => ({ ...value, y: 3 }),
-      id: {
-        x: (s, x) => ({ ...s, x }),
-      },
-    })({});
-    cct.id.x(2);
-    expect(cct.state).toEqual({ id: { x: 2 }, y: 3 });
-  });
-});
 
-describe('async', () => {
-  it('should resolve at state change', async () => {
-    const cct = circuit({
-      x: (s, x) => Promise.resolve({ ...s, x: 2 }),
-    })({});
-    await cct.x();
-    expect(cct.state).toEqual({ x: 2 });
-  });
-  it('should resolve at deep state change', async () => {
-    const cct = circuit({
-      id: {
-        x: (s, x) => Promise.resolve({ ...s, x }),
-      },
-    })({});
-    await cct.id.x(2);
-    expect(cct.state).toEqual({ id: { x: 2 } });
-  });
-
-  it('should resolve at terminal', async () => {
-    const terminal = async (state) => {
-      expect(state).toEqual({ id: { x: 2 } });
-    };
-    const cct = circuit(
-      {
+  describe('async', () => {
+    it('should resolve at state change', async () => {
+      const cct = circuit({
+        x: (s, x) => Promise.resolve({ ...s, x: 2 }),
+      })({});
+      await cct.x();
+      expect(cct.state).toEqual({ x: 2 });
+    });
+    it('should resolve at deep state change', async () => {
+      const cct = circuit({
         id: {
           x: (s, x) => Promise.resolve({ ...s, x }),
         },
-      },
-      terminal
-    )({});
-    await cct.id.x(2);
-  });
-  it('should resolve sibling state change sequence at terminal', (done) => {
-    const terminal = (state, signal) => {
-      if (signal === '/id/z') {
-        expect(state).toEqual({ id: { x: 1, y: 2, z: 3 } });
-        done();
-      }
-    };
-    const cct = circuit(
-      {
-        id: {
-          x: (s, x) => Promise.resolve({ ...s, x, y: 1 }),
-          y: (s, y) => Promise.resolve({ ...s, y: y + 1, z: 2 }),
-          z: (s, z) => Promise.resolve({ ...s, z: z + 1 }),
+      })({});
+      await cct.id.x(2);
+      expect(cct.state).toEqual({ id: { x: 2 } });
+    });
+
+    it('should resolve at terminal', async () => {
+      const terminal = async (state) => {
+        expect(state).toEqual({ id: { x: 2 } });
+      };
+      const cct = circuit(
+        {
+          id: {
+            x: (s, x) => Promise.resolve({ ...s, x }),
+          },
         },
-      },
-      terminal
-    )({});
-    cct.id.x(1);
+        terminal
+      )({});
+      await cct.id.x(2);
+    });
+    it('should resolve sibling state change sequence at terminal', (done) => {
+      const terminal = (state, signal) => {
+        if (signal === '/id/z') {
+          expect(state).toEqual({ id: { x: 1, y: 2, z: 3 } });
+          done();
+        }
+      };
+      const cct = circuit(
+        {
+          id: {
+            x: (s, x) => Promise.resolve({ ...s, x, y: 1 }),
+            y: (s, y) => Promise.resolve({ ...s, y: y + 1, z: 2 }),
+            z: (s, z) => Promise.resolve({ ...s, z: z + 1 }),
+          },
+        },
+        terminal
+      )({});
+      cct.id.x(1);
+    });
+  });
+});
+
+describe('addons', () => {
+  describe('map', () => {
+    it('should adapt reduce api', () => {
+      const v = jest.fn();
+      const map = (fn) => (state, value) => fn(value);
+      circuit({ x: map(v) })({}).x(123);
+      expect(v).toHaveBeenCalledWith(123);
+    });
+    it('should reduce mapped value', () => {
+      const map = (fn) =>
+        function (state, value) {
+          return { ...state, [this.id]: fn.call(this, value) };
+        };
+      const cct = circuit({ x: map((v) => v + v) })({});
+      cct.x(123);
+      expect(cct.state).toEqual({ ['/x']: 246 });
+    });
   });
 });
 

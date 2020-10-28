@@ -4,12 +4,12 @@ const fromRoot = (circuit, [head, ...tail]) =>
   tail.length
     ? fromRoot(circuit[head], tail)
     : typeof circuit[head] === 'object'
-    ? [circuit[head][_REDUCERS], false]
-    : [circuit[_REDUCERS], _ID];
+    ? [circuit[head][_REDUCERS], false, circuit[head]]
+    : [circuit[_REDUCERS], _ID, circuit[head]];
 
 export const _CURRENT = Symbol();
 
-const wireUp = (circuit, terminal, _base) => (
+const build = (signals, terminal, _base) => (
   state = {},
   base = () => _base,
   parent = { id: '' },
@@ -17,36 +17,36 @@ const wireUp = (circuit, terminal, _base) => (
   deferredSignals = [],
   deferredSignal
 ) => {
-  const propagate = (signalState, signal, deferred, id) => {
+  const propagate = (signalState, id, deferred, signal) => {
     // halt propagation when signal is empty or unchanged
-    if (
+    if (deferred) {
+      if (deferred === _ID || signalState === state) return signalState;
+    } else if (
       !signalState ||
-      (signal in signalState && signalState[signal] === state[signal])
+      (id in signalState && signalState[id] === state[id])
     )
       return state;
-    if (deferred === _ID) return signalState;
 
-    const lastState = state;
     const nextState = deferred
       ? signalState
       : // reduce signal state into circuit state.
         reducers.reduce((acc, [address, event, handler, deferred, shared]) => {
           acc =
-            event && address !== signal
+            event && address !== id
               ? acc
               : shared
-              ? { ...acc, ...handler(acc[signal], _ID, acc) }
+              ? { ...acc, ...handler(acc[id], _ID, acc) }
               : // deferred children handle their own state chains and will
               // always be propagated after local state has been reduced
               deferred
               ? handler
-                ? handler(deferred === _ID ? acc[signal] : acc, true) && state
+                ? handler(deferred === _ID ? acc[id] : acc, true) && state
                 : acc
               : address in signalState
               ? signalState[address] === acc[address]
                 ? acc
-                : address === signal
-                ? { ...acc, [address]: signalState[signal] }
+                : address === id
+                ? { ...acc, [address]: signalState[id] }
                 : handler(signalState[address])
               : signalState;
           if (!(acc instanceof Promise)) state = acc;
@@ -56,26 +56,21 @@ const wireUp = (circuit, terminal, _base) => (
     // bale until fulfilled
     if (nextState instanceof Promise) {
       nextState.then((s) => {
-        return propagate(s, signal, false, id);
+        return propagate(s, id, false, signal);
       });
       return state;
     }
 
-    state = circuit['$state']
-      ? circuit['$state'](lastState, nextState)
+    state = signals['$state']
+      ? signals['$state'](nextState, signal)
       : nextState;
 
-    return terminal ? terminal(state, id) || state : state;
+    return terminal ? terminal(state, signal) || state : state;
   };
 
-  const build = (acc, [signal, reducer, deferredReducers]) => {
+  const wire = (acc, [signal, reducer, deferredReducers]) => {
     const [, , alias, , _se] = signal.match(/(([\w]+):)?(\s*(.+))?/);
     const [selector, event = ''] = _se.split('$');
-    if (event === 'init') {
-      state = reducer(state[parent.address]);
-      parent.state[parent.address] = state;
-      return acc;
-    }
 
     let [resolvedReducers, deferredId] =
       (event.startsWith('/') && fromRoot(acc, event.slice(1).split('/'))) || [];
@@ -97,21 +92,27 @@ const wireUp = (circuit, terminal, _base) => (
       );
       return acc;
     }
+
+    // normalise the signal address for state
     const address = selector;
     const id = `${parent.id}/${address}`;
+    const self = {
+      id,
+      signal: (id, value) => fromRoot(base(), id.slice(1).split('/'))[2](value),
+    };
 
     // a signal can be handled directly or passed through to a child circuit
     const children =
       typeof reducer !== 'function' &&
-      wireUp(reducer, (value, id) =>
+      build(reducer, (value, id, acc = state, deferred) =>
         propagate(
-          id.endsWith('/') ? value : { ...state, [address]: value },
+          value === _CURRENT ? acc : { ...acc, [address]: value },
           address,
-          false,
+          deferred,
           id
         )
       )(
-        typeof state[address] === 'object' ? state[address] : state,
+        state[address],
         base,
         { id, state, address },
         resolvedReducers || [],
@@ -119,12 +120,23 @@ const wireUp = (circuit, terminal, _base) => (
         deferring
       );
 
+    if (event === 'init') {
+      const iState = reducer.call(
+        self,
+        address ? state : parent.state || state
+      );
+      if (!address) {
+        state = iState;
+        if (terminal) terminal(_CURRENT, id, state, true);
+        return acc;
+      }
+      state[address] = iState[address];
+    }
+
     const handler = function (value, deferredId, acc = state) {
       if (value === _CURRENT) value = acc[address];
-      const cct = base();
-      cct.signal = id;
       return propagate(
-        children ? value : reducer.call(cct, acc, value),
+        children ? value : reducer.call(self, acc, value),
         address || parent.address,
         deferredId || deferredSignal,
         id
@@ -139,7 +151,7 @@ const wireUp = (circuit, terminal, _base) => (
       !children && deferring && resolvedReducers === reducers,
     ]);
 
-    acc[alias || address] = (value) => handler(value)[address];
+    acc[alias || address] = (value) => handler(value) && state;
     return children
       ? Object.defineProperty(acc, address, {
           get() {
@@ -149,17 +161,17 @@ const wireUp = (circuit, terminal, _base) => (
       : acc;
   };
 
-  const signals = Object.entries(circuit).reduce(build, {
+  const circuit = Object.entries(signals).reduce(wire, {
     [_REDUCERS]: reducers,
   });
 
   return (_base = parent.id
-    ? signals
-    : Object.defineProperty(deferredSignals.reduce(build, signals), 'state', {
+    ? circuit
+    : Object.defineProperty(deferredSignals.reduce(wire, circuit), 'state', {
         get() {
           return state;
         },
       }));
 };
 
-export default wireUp;
+export default build;
