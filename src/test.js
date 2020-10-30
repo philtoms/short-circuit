@@ -17,8 +17,7 @@ describe('circuit', () => {
     it('should allow aliased signals in a deep circuit', () => {
       expect(
         'Z' in
-          circuit({ 'X:id': { 'Y:class': { 'Z:class': jest.fn() } } })({}).id
-            .class
+          circuit({ 'X:id': { 'Y:class': { 'Z:class': jest.fn() } } })({}).X.Y
       ).toBe(true);
     });
     it('should allow whitespace in signal', () => {
@@ -93,11 +92,10 @@ describe('circuit', () => {
       expect(cct.state).toEqual({ x: { y1: 2, y2: 1 } });
     });
     it('should expose state signal id to reducer', () => {
-      let stateId;
       const z = function () {
         state = this.id;
       };
-      circuit({ x: { y: { z } } })({ a: 123 }).x.y.z();
+      circuit({ x: { y: { z } } })({}).x.y.z();
       expect(state).toBe('/x/y/z');
     });
     it('should signal state internally', () => {
@@ -108,14 +106,23 @@ describe('circuit', () => {
       circuit({ x: { y: { z } }, a: { b: { c } } })({}).x.y.z(123);
       expect(c).toHaveBeenCalledWith({}, 123);
     });
+    it('should signal circuit state internally', () => {
+      const z = function (state, value) {
+        this.signal('/a/b', { c: value });
+      };
+      const c = jest.fn();
+      const cct = circuit({ x: { y: { z } }, a: { b: { c } } })({});
+      cct.x.y.z(123);
+      expect(cct.state.a.b.c).toEqual(123);
+    });
     it('should capture internal state change', () => {
       const z = function (state, value) {
-        return this.signal('/a/b/c', value);
+        return { z: this.signal('/a/b/c', value).c };
       };
       const c = (acc, c) => ({ ...acc, c });
       const cct = circuit({ x: { y: { z } }, a: { b: { c } } })({});
 
-      expect(cct.x.y.z(123)).toEqual({ c: 123 });
+      expect(cct.x.y.z(123)).toEqual({ z: 123 });
     });
   });
 
@@ -123,7 +130,7 @@ describe('circuit', () => {
     it('should propagate through sibling state', () => {
       const x = (state, value) => ({ ...state, x: value + 1 });
       const y = () => ({ x: 1, y: 1 });
-      const cct = circuit({ x, y })({});
+      const cct = circuit({ x, y })();
       cct.y();
       expect(cct.state).toEqual({ x: 2, y: 1 });
     });
@@ -139,69 +146,84 @@ describe('circuit', () => {
       const y = () => ({ x: 1, y: 1 });
       const cct = circuit({ x$state: x, y })();
       cct.y();
-      expect(cct.state).toEqual({ y: 1 });
+      expect(cct.state).toEqual({ x: 1, y: 1 });
     });
     it('should propagate to deferred state', () => {
-      const s1 = function (state, value) {
+      const x = function (state, value) {
         return { ...state, x: value };
       };
-      const s2 = function (state, value) {
+      const d = function (state, value) {
         return { ...state, d: value };
       };
-      const cct = circuit({ x: s1, 'd$/x': s2 })({ x: 1 });
+      const cct = circuit({ x, 'd$/x': d })();
       cct.x(456);
-      expect(cct.state.x).toEqual(456);
       expect(cct.state.d).toEqual(456);
     });
     it('should propagate to deferred nested state', () => {
-      const s1 = function (state, value) {
+      const x = function (state, value) {
         return { ...state, x: value };
       };
-      const s2 = function (state, value) {
+      const y = function (state, value) {
+        return { ...state, y: value };
+      };
+      const cct = circuit({ x, 'd$/x': { y } })();
+      cct.x(456);
+      expect(cct.state.d.y).toEqual(456);
+    });
+    it('should propagate to multiple deferred nested state', () => {
+      const x = function (state, value) {
+        return { ...state, x: value };
+      };
+      const y = function (state, value) {
+        return { ...state, y: value };
+      };
+      const cct = circuit({ x, 'd$/x': { x, y } })();
+      cct.x(456);
+      expect(cct.state.d.x).toEqual(456);
+      expect(cct.state.d.y).toEqual(456);
+    });
+    it('should propagate nested state to deferred state', () => {
+      const y = function (state, value) {
+        return { ...state, y: value };
+      };
+      const d = function (state, value) {
         return { ...state, d: value };
       };
-      const cct = circuit({ x: s1, 'd$/x': { s2 } })({ x: 1 });
-      cct.x(456);
-      expect(cct.state.x).toEqual(456);
-      expect(cct.state.d).toEqual(456);
+      const cct = circuit({ x: { y }, 'd$/x': d })({});
+      cct.x.y(456);
+      expect(cct.state.d).toEqual({ y: 456 });
     });
     it('should propagate nested state to deferred nested state', () => {
-      const s1 = function (state, value) {
-        return { ...state, s1: value };
+      const y = function (state, value) {
+        return { ...state, y: value };
       };
-      const s2 = function (state, value) {
-        return { ...state, s2: value };
-      };
-      const cct = circuit({ x: { y: { z: { s1 } } }, 'def$/x': { s2 } })({});
-      cct.x.y.z.s1(456);
-      expect(cct.state.def.s2).toEqual({ y: { z: { s1: 456 } } });
-    });
-    it('should propagate nested state to deeply deferred nested state', () => {
-      const s1 = function (state, value) {
+      const z = function (state, value) {
         return { ...state, z: value };
       };
-      const s2 = function (state, value) {
-        return { ...state, s2: value };
+      const cct = circuit({ x: { y }, 'd$/x': { z } })({});
+      cct.x.y(456);
+      expect(cct.state.d.z).toEqual({ y: 456 });
+    });
+    it('should propagate nested state to deeply deferred nested state', () => {
+      const y = function (state, value) {
+        return { ...state, y: value };
       };
-      const cct = circuit({ x: { y: { z: s1 } }, 'd$/x/y/z': { s2 } })({});
-      cct.x.y.z(456);
-      expect(cct.state.d.s2).toEqual(456);
+      const cct = circuit({ x: { y }, 'd$/x/y': { y } })({});
+      cct.x.y(456);
+      expect(cct.state.d.y).toEqual(456);
     });
     it('should propagate through to terminal', () => {
-      const s1 = function (state) {
-        return { ...state, s1: 1 };
-      };
-      const s2 = function (state) {
-        return { ...state, s2: 2 };
+      const y = function (state) {
+        return { ...state, y: 1 };
       };
       const terminal = jest.fn((state) => state);
-      const cct = circuit(
-        { x: { y: { z: { s1 } } }, 'd$/x': { s2 } },
-        terminal
-      )({});
-      cct.x.y.z.s1(456);
-      expect(terminal).toHaveBeenCalledWith({ d: { s2: 2 } }, '/d/s2');
-      expect(terminal).toHaveBeenCalledWith(cct.state, '/x/y/z/s1');
+      const cct = circuit({ x: { y }, 'd$/x': { y } }, terminal)({});
+      cct.x.y(456);
+      expect(terminal).toHaveBeenCalledWith(
+        { x: { y: 1 }, d: { y: 1 } },
+        '/d/y',
+        true
+      );
     });
     it('should only propagate changed state', () => {
       const x = (state, value) => ({ ...state, id: value });
@@ -455,5 +477,22 @@ describe('README examples', () => {
       todo.items.update({ text: 'todo 2 done', id: 2, done: true });
       expect(todo.state.footer.counts).toEqual({ total: 2, done: 1 });
     });
+  });
+
+  it('async state change order', (done) => {
+    const terminal = (value, signal) => {
+      console.log(signal);
+      if (value.s3) done();
+    };
+    const cct = circuit(
+      {
+        s1: (acc) => Promise.resolve({ ...acc, s1: true, s2: false }),
+        s2: (acc) => Promise.resolve({ ...acc, s2: true, s3: false }),
+        s3: (acc) => Promise.resolve({ ...acc, s3: true }),
+      },
+      terminal
+    )();
+
+    cct.s1(); // logs => '/s1', '/s2', '/s3'
   });
 });

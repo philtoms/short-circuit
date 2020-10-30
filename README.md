@@ -138,15 +138,16 @@ State change propagation will be further reduced by deferred reducer(s) before b
 `short-circuit` flattens internal state changes into a predicable output signal. If a terminal is attached to the circuit, the output signal sequence is guaranteed to be aligned with the order of internal state change. This guarantee holds through asynchronous operations.
 
 ```javascript
-const terminal = (value, signal) => console.log(signal);
+function terminal() => console.log(this.signal);
+
 const cct = circuit(
   {
-    state1: () => cct.state2(),
-    state2: () => Promise.resolve(cct.state3),
-    state3: () => Promise.resolve((state) => ({ ...state, done: true })),
+    s1: (acc) => Promise.resolve({ ...acc, s1: true, s2: false }),
+    s2: (acc) => Promise.resolve({ ...acc, s2: true, s3: false }),
+    s3: (acc) => Promise.resolve({ ...acc, s3: true }),
   },
   terminal
 )();
 
-cct.state1(); // logs => '/state1', '/state2', '/state3'
+cct.s1(); // logs => '/s1', '/s2', '/s3'
 ```
