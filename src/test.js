@@ -3,7 +3,7 @@ const esmRequire = require('esm')(module);
 const { default: circuit, _CURRENT } = esmRequire('./index.js');
 
 describe('circuit', () => {
-  describe('initialisation', () => {
+  describe('initialization', () => {
     it('should create a circuit', () => {
       expect(circuit({ id: jest.fn() })({ id: 123 }).id).toBeDefined();
     });
@@ -144,7 +144,7 @@ describe('circuit', () => {
     it('should not propagate through sibling event', () => {
       const x = (state, value) => ({ ...state, x: value + 1 });
       const y = () => ({ x: 1, y: 1 });
-      const cct = circuit({ x$state: x, y })();
+      const cct = circuit({ x$change: x, y })();
       cct.y();
       expect(cct.state).toEqual({ x: 1, y: 1 });
     });
@@ -304,21 +304,21 @@ describe('circuit', () => {
     });
     it('should propagate to root $state', () => {
       const cct = circuit({
-        $state: (state) => ({ ...state, y: 3 }),
         id: {
           x: (s, x) => ({ ...s, x }),
         },
+        $state: (state) => ({ ...state, y: 3 }),
       })({});
       cct.id.x(2);
       expect(cct.state).toEqual({ id: { x: 2 }, y: 3 });
     });
     it('should propagate from nested $state', () => {
       const cct = circuit({
-        $state: (state) => ({ ...state, z: state.id.y }),
         id: {
           x: (s, x) => ({ ...s, x }),
           $state: (state) => ({ ...state, y: 3 }),
         },
+        $state: (state) => ({ ...state, z: state.id.y }),
       })({});
       cct.id.x(2);
       expect(cct.state).toEqual({ id: { x: 2, y: 3 }, z: 3 });
@@ -326,15 +326,19 @@ describe('circuit', () => {
     it('should include signal in $state', () => {
       let signal1, signal2;
       const cct = circuit({
-        $state: (state, signal) => (signal2 = signal),
         id: {
           x: (s, x) => ({ ...s, x }),
-          $state: (state, signal) => (signal1 = signal),
+          $state() {
+            signal1 = this.id;
+          },
+        },
+        $state() {
+          signal2 = this.id;
         },
       })({});
       cct.id.x(2);
-      expect(signal1).toEqual('/id/x');
-      expect(signal1).toEqual(signal2);
+      expect(signal1).toEqual('/id');
+      expect(signal2).toEqual('/');
     });
   });
 
@@ -480,9 +484,13 @@ describe('README examples', () => {
   });
 
   it('async state change order', (done) => {
+    let log = [];
     const terminal = (value, signal) => {
-      console.log(signal);
-      if (value.s3) done();
+      log.push(signal);
+      if (value.s3) {
+        expect(log).toEqual(['/s1', '/s2', '/s3']);
+        done();
+      }
     };
     const cct = circuit(
       {
