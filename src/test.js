@@ -1,6 +1,6 @@
 const esmRequire = require('esm')(module);
 
-const { default: circuit, _CURRENT } = esmRequire('./index.js');
+const { default: circuit } = esmRequire('./index.js');
 
 describe('circuit', () => {
   describe('initialization', () => {
@@ -65,6 +65,17 @@ describe('circuit', () => {
       cct.id();
       expect(ctx.value).toBe(2);
     });
+    it('should share circuit context', () => {
+      let ctx;
+      const y = function () {
+        ctx = this;
+        ctx.value = (ctx.value || 0) + 1;
+      };
+      const cct = circuit({ id1: y, id2: y })({});
+      cct.id1();
+      cct.id2();
+      expect(ctx.value).toBe(2);
+    });
   });
 
   describe('state change', () => {
@@ -74,8 +85,8 @@ describe('circuit', () => {
       const cct = circuit({ x: { y1, y2 } })({
         x: { y1: 123, y2: 123 },
       });
-      cct.x.y1(_CURRENT);
-      cct.x.y2(_CURRENT);
+      cct.x.y1();
+      cct.x.y2();
       expect(cct.state).toEqual({ x: { y1: 456, y2: 456 } });
     });
     it('should merge state in jump order', () => {
@@ -108,9 +119,9 @@ describe('circuit', () => {
     });
     it('should signal local circuit state internally', () => {
       const z = function (state, value) {
-        this.signal('/a/b', { c: value });
+        this.signal('/a/b', value);
       };
-      const c = jest.fn();
+      const c = (acc, c) => ({ ...acc, c });
       const cct = circuit({ x: { y: { z } }, a: { b: { c } } })({});
       cct.x.y.z(123);
       expect(cct.state.a.b.c).toEqual(123);
@@ -286,16 +297,17 @@ describe('circuit', () => {
       expect(cct.state.d.y).toEqual(456);
     });
     it('should propagate through to terminal', () => {
-      const y = function (state) {
-        return { ...state, y: 1 };
+      const y = function (state, y) {
+        return { ...state, y };
       };
       const terminal = jest.fn((state) => state);
-      const cct = circuit({ x: { y }, 'd$/x': { y } }, terminal)({});
+      const cct = circuit({ x: { y }, 'd$/x/y': { y } }, terminal)({});
       cct.x.y(456);
       expect(terminal).toHaveBeenCalledWith(
-        { x: { y: 1 }, d: { y: 1 } },
-        '/d/y',
-        true
+        { x: { y: 456 }, d: { y: 456 } },
+        '/x/y',
+        true,
+        undefined
       );
     });
   });
@@ -311,12 +323,10 @@ describe('circuit', () => {
       expect(cct.state).toEqual({ id: 2 });
     });
     it('should merge $init into state', () => {
-      const originalState = {
-        id: 1,
-      };
+      const originalState = {};
       const cct = circuit({
         id: {
-          $init: (acc) => ({ ...acc, id: acc.id + 1 }),
+          $init: (acc) => ({ ...acc, id: 2 }),
         },
       })(originalState);
       expect(cct.state).not.toBe(originalState);
@@ -344,7 +354,7 @@ describe('circuit', () => {
       })(originalState);
       expect(cct.state).toEqual({ id: 6 });
     });
-    it('should FIX: nest order sensitivity', () => {
+    it('nest order sensitivity', () => {
       const originalState = {
         id: 1,
       };
@@ -377,6 +387,20 @@ describe('circuit', () => {
       cct.id.x(2);
       expect(cct.state).toEqual({ id: { x: 2, y: 3 }, z: 3 });
     });
+    it('should propagate terminal only $state', () => {
+      const cct = circuit({
+        x: {
+          $init: (state) => {
+            return { ...state, y: 2 };
+          },
+          $state: (state) => {
+            return { ...state, z: 3 };
+          },
+        },
+      })({});
+      cct.x(1);
+      expect(cct.state).toEqual({ x: 1, y: 2, z: 3 });
+    });
     it('should include signal in $state', () => {
       let signal1, signal2;
       const cct = circuit({
@@ -391,8 +415,8 @@ describe('circuit', () => {
         },
       })({});
       cct.id.x(2);
-      expect(signal1).toEqual('/id');
-      expect(signal2).toEqual('/');
+      expect(signal1).toEqual('/id/state');
+      expect(signal2).toEqual('/state');
     });
   });
 
@@ -496,7 +520,9 @@ describe('README examples', () => {
 
     const blueprint = {
       header: {
-        add: (state, value) => todo.items.update(value),
+        add(state, value) {
+          this.signal('/items/update', value);
+        },
       },
       items: {
         update,

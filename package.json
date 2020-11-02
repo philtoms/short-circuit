@@ -1,6 +1,6 @@
 {
   "name": "short-circuit",
-  "version": "1.2.0-alpha",
+  "version": "1.4.0-alpha",
   "description": "state machine as a live circuit",
   "main": "index.js",
   "scripts": {
