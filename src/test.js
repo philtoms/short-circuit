@@ -65,6 +65,17 @@ describe('circuit', () => {
       cct.id();
       expect(ctx.value).toBe(2);
     });
+    it('should share circuit context', () => {
+      let ctx;
+      const y = function () {
+        ctx = this;
+        ctx.value = (ctx.value || 0) + 1;
+      };
+      const cct = circuit({ id1: y, id2: y })({});
+      cct.id1();
+      cct.id2();
+      expect(ctx.value).toBe(2);
+    });
   });
 
   describe('state change', () => {

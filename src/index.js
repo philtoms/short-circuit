@@ -13,7 +13,7 @@ const fromSignal = (circuit = {}, [head, ...tail]) => {
     : [circuit[_REDUCERS], circuit[head]];
 };
 
-const build = (signals, terminal, base) => (
+const build = (signals, terminal, base, ctx = {}) => (
   state = {},
   parent = { id: '', state: () => state },
   reducers = [],
@@ -93,7 +93,7 @@ const build = (signals, terminal, base) => (
         )(
           state[address],
           { id, address, state: () => state },
-          resolvedReducers || [],
+          resolvedReducers,
           deferredSignals,
           deferring
         )) ||
@@ -105,8 +105,13 @@ const build = (signals, terminal, base) => (
       signal: (id, value) => fromSignal(acc, id.split('/'))[1](value),
     };
 
+    const proxy = new Proxy(self, {
+      get: (_, prop) => (prop in ctx ? ctx[prop] : self[prop]),
+      set: (_, prop, value) => (ctx[prop] = value),
+    });
+
     if (event === 'init') {
-      const iState = reducer.call(self, address ? state : parent.state());
+      const iState = reducer.call(proxy, address ? state : parent.state());
       if (!address) {
         state = iState;
         if (terminal) terminal(undefined, id, true, state);
@@ -124,7 +129,7 @@ const build = (signals, terminal, base) => (
       return propagate(
         localCircuit
           ? { ...acc, [address]: value }
-          : reducer.call(self, acc, value) || state,
+          : reducer.call(proxy, acc, value) || state,
         address,
         deferred,
         id,
