@@ -130,9 +130,9 @@ const cct = circuit(
       // [1, 2, 3]
       // 2,
       // {
-      //  el - current element bound to signal
-      //  id - current signal id '/items/item
-      // signal an internal state change...
+      //  id: current signal id '/items/item
+      //  signal: an internal state change...
+      // }
       return this.signal('../items')
     }
   }},
@@ -199,7 +199,7 @@ State change propagation will be further reduced by deferred reducer(s) before b
 
 ## State change and signalling behavior
 
-`dom-circuit` flattens internal state changes into a predicable output signal. If a terminal is attached to the circuit, the output signal sequence is guaranteed to be aligned with the order of internal state change. This guarantee holds through asynchronous operations.
+`short-circuit` flattens internal state changes into a predicable output signal. If a terminal is attached to the circuit, the output signal sequence is guaranteed to be aligned with the order of internal state change. This guarantee holds through asynchronous operations.
 
 ```javascript
 function terminal() => console.log(this.id);
