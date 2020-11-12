@@ -86,17 +86,8 @@ const cct = circuit({
   state1: (acc, value) => {return;} // no state change so no propagation
   state2: (acc, value) => ({...acc, state2: value}) // no signalled value change so no propagation
   state3: (acc, value) => ({...acc, state3: value + 1}) // propagate state change
-  state4: (acc, value) => ({...acc, state3: acc.state3 + 1}) // propagate sibling state change
 })()
-
-cct.add(1) // => 2
 ```
-
-### Propagation order
-
-1. visit changed sibling states in declaration order
-2. visit deferred states in declaration order
-3. visit parent circuit (reenter at 1)
 
 ## Reducers
 
@@ -155,17 +146,6 @@ Circuit state change can be actioned directly from within a reducer in several w
 
 State change propagation will bubble up through the circuit until it reaches the circuit terminal
 
-### Propagate a sibling state
-
-```javascript
-  header: {
-    add: (state, value) =>({...state, updated: true}),
-    updated: (state, value) => // reducer called with value === true
-  },
-```
-
-State change propagation will signal sibling state change before bubbling up through the circuit until it reaches the circuit terminal.
-
 ### Signal a new state
 
 ```javascript
@@ -206,11 +186,21 @@ function terminal() => console.log(this.id);
 
 const cct = circuit(
   {
-    s1: (acc) => Promise.resolve({ ...acc, s1: true, s2: false }),
-    s2: (acc) => Promise.resolve({ ...acc, s2: true, s3: false }),
+    s1(acc) {
+      return Promise.resolve({ ...acc, s1: true }).then(() => {
+        console.log(this.id);
+        return this.signal('/s2', true);
+      });
+    },
+    s2(acc) {
+      return Promise.resolve({ ...acc, s2: true }).then(() => {
+        console.log(this.id);
+        return this.signal('/s3', true);
+      });
+    },
     s3: (acc) => Promise.resolve({ ...acc, s3: true }),
   },
-  $state: terminal
+  terminal
 )();
 
 cct.s1(); // logs => '/s1', '/s2', '/s3'

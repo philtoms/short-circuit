@@ -19,7 +19,7 @@ const build = (signals, terminal, base, ctx = {}) => (
   deferredSignals = [],
   handlers = []
 ) => {
-  const propagate = (signalState, address, deferredHandlers, signal, local) => {
+  const propagate = (signalState, address, deferred, signal, local) => {
     // bale until fulfilled
     if (signalState instanceof Promise) {
       signalState.then((s) => {
@@ -34,10 +34,8 @@ const build = (signals, terminal, base, ctx = {}) => (
     )
       return signalState;
 
-    const deferred = deferredHandlers === handlers;
-    // reduce signal state into local circuit state.
+    const bubble = deferred !== handlers;
 
-    const lastState = state;
     // defer bubbling for locally propagated signals
     if (local)
       state = handlers.reduce(
@@ -47,20 +45,20 @@ const build = (signals, terminal, base, ctx = {}) => (
       );
     else {
       state = signalState;
-      if (!deferred)
+      if (bubble)
         state = handlers.reduce(
           (acc, [key, handler, deferring]) =>
             deferring && signal.startsWith(key)
-              ? handler(acc[address] || acc, handlers) && state
-              : key !== address && acc[key] !== lastState[key]
-              ? handler(acc[key], handlers)
+              ? handler(
+                  acc[address] === undefined ? acc : acc[address],
+                  handlers
+                ) && state
               : (!key && handler(undefined, handlers, acc)) || acc,
           state
         );
     }
 
-    if (terminal && !deferred)
-      terminal(state, signal, !!address, deferredHandlers);
+    if (terminal && bubble) terminal(state, signal, !!address, deferred);
 
     return state;
   };
@@ -82,8 +80,10 @@ const build = (signals, terminal, base, ctx = {}) => (
 
     // normalise the signal address for state
     const address = selector;
-    const id =
-      address || event ? `${parent.id}/${address || event}` : parent.id || '/';
+    const id = (address || event
+      ? `${parent.id}/${address || event}`
+      : parent.id || '/'
+    ).replace('//', '/');
     if (address && typeof state === 'object' && !(address in state))
       state[address] = hasChildren ? {} : undefined;
 
@@ -114,7 +114,10 @@ const build = (signals, terminal, base, ctx = {}) => (
 
     const proxy = new Proxy(self, {
       get: (_, prop) => (prop in ctx ? ctx[prop] : self[prop]),
-      set: (_, prop, value) => (ctx[prop] = value),
+      set: (_, prop, value) => {
+        ctx[prop] = value;
+        return true;
+      },
     });
 
     if (event === 'init') {
