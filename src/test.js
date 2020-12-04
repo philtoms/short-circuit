@@ -31,23 +31,21 @@ describe('circuit', () => {
     });
   });
 
+  describe('map reducer', () => {
+    it('should expose signal reducer as map', () => {
+      const x = jest.fn((value) => value * 2);
+      circuit({ id_: x })({ id: 123 }).id(456);
+      expect(x).toHaveBeenCalledWith(456);
+    });
+    it('should map value into reduced state', () => {
+      const x = jest.fn((value) => value * 2);
+      const cct = circuit({ id_: x })();
+      cct.id(123);
+      expect(cct.state).toEqual({ id: 246 });
+    });
+  });
+
   describe('reducer', () => {
-    it('should expose signal reducer', () => {
-      const x = jest.fn((state, value) => ({ ...state, id: value }));
-      circuit({ id: x })({ id: 123 }).id(456);
-      expect(x).toHaveBeenCalledWith({ id: 123 }, 456);
-    });
-    it('should reduce all signals', () => {
-      const x = (state, value) => ({ ...state, x: value });
-      const y = (state, value) => ({ ...state, y: value });
-      const circut = circuit({ x, y })({ x: 123, y: 123 });
-      circut.x(456);
-      circut.y(456);
-      expect(circut.state).toEqual({
-        x: 456,
-        y: 456,
-      });
-    });
     it('should reduce a deep circuit', () => {
       const y = (state, value) => ({ ...state, y: value });
       const cct = circuit({ id: { x: { y } } })({});

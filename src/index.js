@@ -13,11 +13,12 @@ const fromSignal = (circuit = {}, [head, ...tail]) => {
     : [circuit[_REDUCERS], circuit[head]];
 };
 
-const build = (signals, terminal, base, ctx = {}) => (
+const build = (signals, terminal) => (
   state = {},
-  parent = { id: '', state: () => state },
+  parent = { base: null, id: '', state: () => state },
   deferredSignals = [],
-  handlers = []
+  handlers = [],
+  ctx = {}
 ) => {
   const propagate = (signalState, address, deferred, signal, local) => {
     // bale until fulfilled
@@ -64,7 +65,9 @@ const build = (signals, terminal, base, ctx = {}) => (
   };
 
   const wire = (acc, [signal, reducer, deferred]) => {
-    const [, , alias, , _se] = signal.match(/(([\w]+):)?(\s*(.+))?/);
+    const [, , alias, , _se, asMap] = signal.match(
+      /(([\w]+):)?(\s*([^_]+))?(_)?/
+    );
     const [selector, event = ''] = _se.split('$');
 
     if (deferred) {
@@ -73,7 +76,7 @@ const build = (signals, terminal, base, ctx = {}) => (
       return acc;
     }
 
-    const deferring = event.startsWith('/') || event.startsWith('.');
+    const deferring = /^[\/\.]/.test(event);
     const hasChildren = typeof reducer !== 'function';
     const isCircuit =
       hasChildren && Object.keys(reducer).some((key) => !key.startsWith('$'));
@@ -97,11 +100,10 @@ const build = (signals, terminal, base, ctx = {}) => (
               address,
               deferred,
               id
-            )),
-          acc
+            ))
         )(
           state[address] || state,
-          { id, address, state: () => state },
+          { base: acc, id, address, state: () => state },
           deferredSignals
         )
       : {};
@@ -142,6 +144,11 @@ const build = (signals, terminal, base, ctx = {}) => (
       return (hasChildren ? children[_PROPAGATE] : propagate)(
         hasChildren
           ? { ...acc, [key]: value }
+          : asMap
+          ? {
+              ...acc,
+              [key]: reducer.call(proxy, value) || acc[key],
+            }
           : reducer.call(proxy, acc, value) || acc,
         hasChildren && !isCircuit ? '' : address,
         deferred,
@@ -168,7 +175,7 @@ const build = (signals, terminal, base, ctx = {}) => (
 
   const circuit = Object.entries(signals).reduce(wire, {
     [_REDUCERS]: handlers,
-    [_BASE]: base,
+    [_BASE]: parent.base,
     [_PROPAGATE]: propagate,
   });
 

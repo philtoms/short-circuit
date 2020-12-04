@@ -43,7 +43,7 @@ Circuits like the one above are constructed from `{signal: reducer}` and `{signa
 
 Signals can resolve to circuit identifiers, events or both - but always in structured order:
 
-`(alias:)? (selector)? ($event)?` where:
+`(alias:)? (selector)? ($event)? (_)?` where:
 
 - alias - signal identifier for semantic override is as in `'add:count'`
 - selector - a circuit state identifier as in `count` accessed via `cct.state.count`
@@ -51,6 +51,7 @@ Signals can resolve to circuit identifiers, events or both - but always in struc
   - XPath selector as in `'$/root/path/to/signal/selector'` or `'$../../relative/path'`
   - `init` - initial state event as in `ABC$init`
   - `state` - terminal state change event as in `ABC: { $state }`
+- _ (underscore) - bind map function to handler as in `{fn_: value => value + 1}`
 
 Signals can be applied across circuit properties to facilitate multiple binding scenarios. This items cct has three signal states: two event signals and an internal update state:
 
@@ -107,6 +108,18 @@ const cct = circuit(
 });
 
 cct.count(1); // logs the current state => {count: 2}, '/count'
+```
+
+### Map Reducers
+
+When access to parent state is inappropriate, map reducer pattern can be substituted. The Map reducer follows the standard map argument pattern: `value => value` but the internal handler continues to reduce the mapped value into the parent state before propagating through the circuit.
+
+Map reducers are registered by appending an underscore suffix to the signal selector:
+
+```javascript
+circuit({
+  count_: (value) => value + 1,
+});
 ```
 
 ### Reducer context
@@ -208,6 +221,60 @@ cct.s1(); // logs => '/s1', '/s2', '/s3'
 
 ## Key features appropriate to PI (Programmed Intentionality)
 
-`short-circuit` aims to provide the same level of intentionality support as its big brother, namely the iconic and indexical intentionality patterns described there. But it does not provide out of the box signalling; its really designed to work with some other signal generating solution. In fact it's fair to say that `short-circuit` is still very much at the experimental stage and more investigative work will be required to get the best out of its intentional development potential.
+`short-circuit` aims to provide the same level of intentionality support as its big brother, namely the iconic and indexical intentionality patterns described there. But it does not provide out of the box signalling; it's really designed to work with some other signal generating solution. In fact it's fair to say that `short-circuit` is still very much at the experimental stage and more investigative work will be required to get the best out of its intentional development potential.
 
-But it opens up an additional area of intentionality research - reentrancy. Reentrancy is an intentional pattern whereby multiple third parties are able to reach agreement over shared intentionality whilst maintaining a coherent, independent, intentional stance. This works at the team level: designers, managers, stakeholders all support and agree a shared intentionality; and it works at the development level in exactly the same way. Here's an intentional statement: A TODO app maintains a filtered list of items. `short-circuit` explicitly codes this intentionality as a state machine. The nature of information that furnishes this state machine is irrelevant, it is the changes of state that matter here. Reentrancy allows for the same intentionality to be considered across different intentional stances. Specifically, a state change observed in one stance correlates to a similar state change in another stance. For example, A user adds a new TODO item. The state machine updates its internal representation of this state change. From the data stance, the items list has grown by one. From the display stance, the visible items list has been refreshed.
+But it opens up an additional area of intentionality research - reentrancy. Reentrancy is an intentional pattern whereby multiple third parties are able to reach agreement over shared intentionality whilst maintaining a coherent, independent, intentional stance. This works at the team level: designers, managers, stakeholders all support and agree a shared intentionality; and it works at the development level in exactly the same way.
+
+Here's an intentional statement: A TODO app maintains a filtered list of items. `short-circuit` explicitly codes this intentionality as a state machine. The nature of information that furnishes this state machine is irrelevant, it is the changes of state that matters here. Reentrancy allows for the same intentionality to be considered across different intentional stances. Specifically, a state change observed in one stance correlates to a similar state change in another stance. For example, A user adds a new TODO item. The state machine updates its internal representation of this state change. From the data stance, the items list has grown by one. From the display stance, the visible items list has been refreshed.
+
+## Coming soon..
+
+We might understand and express reentry through the idiomatic application of layered circuitry connected through junctions:
+
+```javascript
+// create the circuit from a blueprint (default layer1)
+const layer1 = circuit(blueprint1);
+
+// apply a new circuit layer to the original circuit:
+layer2 = layer1.circuit(blueprint2);
+
+// activate the circuit
+layer1(state1);
+
+// optionally activate the secondary layer.
+layer2(state2);
+```
+
+Whilst layers are explicitly defined and controlled through code, junctions would be discovered and activated through signal selector alignment. Thus the two circuit blueprints might be created as:
+
+```javascript
+import React;
+
+export const state = {
+  items: {
+    add: (acc, item) => [...items, item],
+  },
+};
+
+export const view = {
+  add_() {
+    return <input onChange={(e) => this.signal('./items/add', e)} />
+  },
+  items: (items) => items.map((item) => <div>item</div>),
+  $state: (acc) => <main>{acc}</main>
+};
+```
+
+A junction will be created on the aligned `items` selector allowing state change signals to cross over the layer boundary. Putting it all together in a React kind of way:
+
+```javascript
+import { render } from 'react-dom';
+import circuit from 'short-circuit';
+import { state, view } from './app';
+
+const app = circuit(state);
+app.circuit(view, (displayState) =>
+  render(displayState, document.querySelector('#todo'))
+);
+app({ items: ['item 1'] });
+```
