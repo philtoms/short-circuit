@@ -444,6 +444,54 @@ describe('circuit', () => {
       await cct.id.x(2);
     });
   });
+
+  describe('layers', () => {
+    it('should expose a layer API', () => {
+      const cct = circuit({})();
+      expect(cct.layer).toBeDefined();
+    });
+    it('should create a junction', () => {
+      const x_ = (value) => value + 1;
+      const cct = circuit({ x_ })();
+      const lct = cct.layer({ x_ })();
+      lct.x(1);
+      expect(cct.state.x).toBe(3);
+      expect(lct.state.x).toBe(2);
+    });
+    it('should create a binary junction', () => {
+      const x_ = (value) => value + 1;
+      const cct = circuit({ x_ })();
+      const lct = cct.layer({ x_ })();
+      cct.x(1);
+      expect(lct.state.x).toBe(3);
+      expect(cct.state.x).toBe(2);
+    });
+    it('should create a deep junction', () => {
+      const x_ = (value) => value + 1;
+      const cct = circuit({ a: { x_ } })();
+      const lct = cct.layer({ a: { x_ } })();
+      lct.a.x(1);
+      expect(cct.state.a.x).toBe(3);
+      expect(lct.state.a.x).toBe(2);
+    });
+    it('should create a circuit junction', () => {
+      const x_ = (value) => value + 1;
+      const a = jest.fn();
+      const cct = circuit({ a })();
+      const lct = cct.layer({ a: { x_ } })();
+      lct.a.x(1);
+      expect(a.mock.calls[0][0]).toEqual({ a: { x: 2 } });
+    });
+    it('should propagate in layer order', () => {
+      const x_ = (value) => value + 1;
+      const t = jest.fn();
+      const cct = circuit({ a: { x_ } }, t)();
+      const lct = cct.layer({ a: { x_ } }, t)();
+      lct.a.x(1);
+      expect(t.mock.calls[0][0]).toEqual({ a: { x: 2 } });
+      expect(t.mock.calls[1][0]).toEqual({ a: { x: 3 } });
+    });
+  });
 });
 
 describe('addons', () => {
