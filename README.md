@@ -213,50 +213,54 @@ const cct = circuit(
     },
     s3: (acc) => Promise.resolve({ ...acc, s3: true }),
   },
-  terminal
+  { terminal }
 )();
 
 cct.s1(); // logs => '/s1', '/s2', '/s3'
 ```
 
+## Key features appropriate to PI (Programmed Intentionality)
+
+`short-circuit` aims to provide the same level of intentionality support as its big brother, namely the iconic and indexical intentionality patterns described there. But unlike `dom-circuit`, it does not provide signal / element binding out of the box. Instead `short-circuit` encourages another important pattern of intentionality - reentrancy.
+
+Reentrancy is an intentional pattern whereby multiple third parties are able to reach agreement over shared intentionality whilst maintaining a coherent, independent, intentional stance. This works at the team level: designers, managers, stakeholders all support and agree a shared intentionality. Of course, this kind of agreement evolves quite expectedly as a consequence of focused development. But programmed intentionality requires that such a pattern be captured as code; and in doing so, the code becomes the focus of agreement.
+
+Here's an intentional statement: A TODO app maintains a filtered list of items. `short-circuit` explicitly codes this intentionality as a state machine. The nature of information that propagates through this state machine is irrelevant, it is the state changes that matter here. Reentrancy allows for the same intentionality to be considered across different intentional stances. Specifically, a state change observed in one stance correlates with a similar state change in another stance. In our example, a user adds a new TODO item. The circuit updates its internal representation of this state change. From the data stance, the items list has grown by one. From the display stance, the visible items list has been refreshed.
+
+`short-circuit`s layered circuits are an experimental reentrancy model.
+
 ## Layered Circuits (experimental)
 
-`short-circuit` provides a very basic notion of integrated circuitry in which functionally isolated circuits are connected together through junctions. Each layered circuit maintains its own state machine but state change propagation can be directed across layer boundaries through bi-directional junctions.
+`short-circuit` provides a very basic notion of integrated circuitry in which functionally isolated circuits are connected together to create larger . Each layered circuit maintains its own state machine but state change propagation can be directed across layer boundaries through bi-directional junctions. A junction is simply a signal alignment where two selectors from different circuits are aligned on the same xpath.
+
+Putting it all together in a Reactish kind of way:
 
 ```javascript
-import React;
+import React from 'react';
+import { render } from 'react-dom';
+import circuit from 'short-circuit';
 
-export const state = {
+// two independent circuits with signal alignment.
+
+const state = {
   items: {
     add: (acc, item) => [...items, item],
   },
 };
 
-export const view = {
+const view = {
   add_() {
-    return <input onChange={(e) => this.signal('./items/add', e)} />
+    return <input onChange={(e) => this.signal('./items/add', e)} />;
   },
   items: (items) => items.map((item) => <div>item</div>),
-  $state: (acc) => <main>{acc}</main>
+  $state: ({ items }) => <main>{items}</main>,
 };
+
+// A junction will be created on the xpath aligned `/items` selector
+// allowing state change signals to cross over the layer boundary.
+
+circuit(state).layer(view, {
+  terminal: (displayState) =>
+    render(displayState, document.querySelector('#todo')),
+});
 ```
-
-A junction will be created on the aligned `items` selector allowing state change signals to cross over the layer boundary. Putting it all together in a Reactish kind of way:
-
-```javascript
-import { render } from 'react-dom';
-import circuit from 'short-circuit';
-import { state, view } from './app';
-
-circuit(state).layer(view, (displayState) =>
-  render(displayState, document.querySelector('#todo'))
-);
-```
-
-## Key features appropriate to PI (Programmed Intentionality)
-
-`short-circuit` aims to provide the same level of intentionality support as its big brother, namely the iconic and indexical intentionality patterns described there. But it does not provide out of the box signalling; it's really designed to work with some other signal generating solution. In fact it's fair to say that `short-circuit` is still very much at the experimental stage and more investigative work will be required to get the best out of its intentional development potential.
-
-But it opens up an additional area of intentionality research - reentrancy. Reentrancy is an intentional pattern whereby multiple third parties are able to reach agreement over shared intentionality whilst maintaining a coherent, independent, intentional stance. This works at the team level: designers, managers, stakeholders all support and agree a shared intentionality; and it works at the development level in exactly the same way.
-
-Here's an intentional statement: A TODO app maintains a filtered list of items. `short-circuit` explicitly codes this intentionality as a state machine. The nature of information that furnishes this state machine is irrelevant, it is the changes of state that matters here. Reentrancy allows for the same intentionality to be considered across different intentional stances. Specifically, a state change observed in one stance correlates to a similar state change in another stance. For example, A user adds a new TODO item. The state machine updates its internal representation of this state change. From the data stance, the items list has grown by one. From the display stance, the visible items list has been refreshed.

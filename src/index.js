@@ -14,13 +14,17 @@ const fromSignal = (circuit = {}, [head, ...tail]) => {
     : [circuit[_REDUCERS], circuit[head]];
 };
 
-const build = (signals, terminal, base, junctions) => (
-  state = {},
-  parent = { id: '', state: () => state },
-  deferredSignals = [],
-  handlers = [],
-  ctx = {}
-) => {
+const build = (signals, config = {}) => {
+  const {
+    base,
+    junctions,
+    parent = { id: '', state: () => state },
+    deferredSignals = [],
+    handlers = [],
+    ctx = {},
+  } = config;
+  let { terminal, state = {} } = config;
+  if (typeof config === 'function') terminal = config;
   const propagate = (signalState, address, deferred, signal, local) => {
     // bale until fulfilled
     if (signalState instanceof Promise) {
@@ -101,22 +105,20 @@ const build = (signals, terminal, base, junctions) => (
 
     // a signal can be handled directly or passed through to a child circuit
     const children = hasChildren
-      ? build(
-          reducer,
-          (value, id, prop, deferred) =>
+      ? build(reducer, {
+          terminal: (value, id, prop, deferred) =>
             (state = propagate(
               prop ? { ...state, [address]: value } : value,
               address,
               deferred,
               id
             )),
-          acc,
-          junctions
-        )(
-          state[address] || state,
-          { id, address, state: () => state },
-          deferredSignals
-        )
+          base: acc,
+          junctions,
+          state: state[address] || state,
+          parent: { id, address, state: () => state },
+          deferredSignals,
+        })
       : {};
 
     const self = {
@@ -197,7 +199,8 @@ const build = (signals, terminal, base, junctions) => (
     get state() {
       return state;
     },
-    layer: (signals, terminal) => build(signals, terminal, null, circuit),
+    layer: (signals, config) =>
+      build(signals, { ...config, junctions: circuit }),
   });
 
   return parent.id ? circuit : deferredSignals.reduce(wire, circuit);
