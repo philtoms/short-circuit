@@ -1,6 +1,7 @@
 const _REDUCERS = Symbol('_REDUCERS');
 const _BASE = Symbol('_BASE');
 const _PROPAGATE = Symbol('_PROPAGATE');
+
 const fromSignal = (circuit = {}, [head, ...tail]) => {
   if (head === '.') return fromSignal(circuit, tail);
   if (head === '..') return fromSignal(circuit[_BASE], tail);
@@ -13,13 +14,17 @@ const fromSignal = (circuit = {}, [head, ...tail]) => {
     : [circuit[_REDUCERS], circuit[head]];
 };
 
-const build = (signals, terminal) => (
-  state = {},
-  parent = { base: null, id: '', state: () => state },
-  deferredSignals = [],
-  handlers = [],
-  ctx = {}
-) => {
+const build = (signals, config = {}) => {
+  const {
+    base,
+    junctions,
+    parent = { id: '', state: () => state },
+    deferredSignals = [],
+    handlers = [],
+    ctx = {},
+  } = config;
+  let { terminal, state = {} } = config;
+  if (typeof config === 'function') terminal = config;
   const propagate = (signalState, address, deferred, signal, local) => {
     // bale until fulfilled
     if (signalState instanceof Promise) {
@@ -32,12 +37,13 @@ const build = (signals, terminal) => (
     if (
       signalState === state ||
       (address in signalState && signalState[address] === state[address])
-    )
+    ) {
       return signalState;
-
-    const bubble = deferred !== handlers;
+    }
 
     // defer bubbling for locally propagated signals
+    const bubble = deferred !== handlers;
+
     if (local)
       state = handlers.reduce(
         (acc, [, handler, deferring]) =>
@@ -50,16 +56,24 @@ const build = (signals, terminal) => (
         state = handlers.reduce(
           (acc, [key, handler, deferring]) =>
             deferring && signal.startsWith(key)
-              ? handler(
+              ? (handler(
                   acc[address] === undefined ? acc : acc[address],
                   handlers
-                ) && state
+                ),
+                state)
               : (!key && handler(undefined, handlers, acc)) || acc,
           state
         );
     }
 
-    if (terminal && bubble) terminal(state, signal, !!address, deferred);
+    const junction =
+      !deferred &&
+      handlers.find(([key, , , layered]) => key === address && layered);
+
+    if (terminal && bubble)
+      terminal(state, signal, !!address, !!junction || deferred);
+
+    if (junction) junction[1](undefined, true, state);
 
     return state;
   };
@@ -69,17 +83,16 @@ const build = (signals, terminal) => (
       /(([\w]+):)?(\s*([^_]+))?(_)?/
     );
     const [selector, event = ''] = _se.split('$');
-
-    if (deferred) {
-      const [resolvedReducers] = fromSignal(acc, event.split('/'));
-      resolvedReducers.push([event.replace(/\./g, ''), reducer, true]);
-      return acc;
-    }
-
     const deferring = /^[\/\.]/.test(event);
     const hasChildren = typeof reducer !== 'function';
     const isCircuit =
       hasChildren && Object.keys(reducer).some((key) => !key.startsWith('$'));
+
+    if (deferred) {
+      const [resolvedReducers] = fromSignal(acc, deferred.split('/'));
+      resolvedReducers.push([deferred.replace(/\./g, ''), reducer, handlers]);
+      return acc;
+    }
 
     // normalise the signal address for state
     const address = selector;
@@ -92,20 +105,20 @@ const build = (signals, terminal) => (
 
     // a signal can be handled directly or passed through to a child circuit
     const children = hasChildren
-      ? build(
-          reducer,
-          (value, id, prop, deferred) =>
+      ? build(reducer, {
+          terminal: (value, id, prop, deferred) =>
             (state = propagate(
               prop ? { ...state, [address]: value } : value,
               address,
               deferred,
               id
-            ))
-        )(
-          state[address] || state,
-          { base: acc, id, address, state: () => state },
-          deferredSignals
-        )
+            )),
+          base: acc,
+          junctions,
+          state: state[address] || state,
+          parent: { id, address, state: () => state },
+          deferredSignals,
+        })
       : {};
 
     const self = {
@@ -157,35 +170,40 @@ const build = (signals, terminal) => (
       );
     };
 
-    if ((!deferring && !event) || event === 'state')
+    if ((!deferring && !event) || event === 'state') {
       handlers.push([address, handler]);
-
-    if (deferring) {
-      deferredSignals.push([signal, handler, true]);
+      const [layer, junction] = fromSignal(junctions, id.split('/'));
+      if (junction) {
+        handlers.push([address, junction, layer, true]);
+        layer.push([address, handler, handlers, true]);
+      }
     }
+    if (deferring) {
+      deferredSignals.push([signal, handler, event]);
+    }
+
     // transfer local cct to handler
     Object.entries(children).forEach(([key, value]) => (handler[key] = value));
     handler[_REDUCERS] = children[_REDUCERS];
     handler[_BASE] = children[_BASE];
 
-    acc[alias || address || event] = handler;
+    if (event !== 'state') acc[alias || address || event] = handler;
 
     return acc;
   };
 
   const circuit = Object.entries(signals).reduce(wire, {
     [_REDUCERS]: handlers,
-    [_BASE]: parent.base,
+    [_BASE]: base,
     [_PROPAGATE]: propagate,
+    get state() {
+      return state;
+    },
+    layer: (signals, config) =>
+      build(signals, { ...config, junctions: circuit }),
   });
 
-  return parent.id
-    ? circuit
-    : Object.defineProperty(deferredSignals.reduce(wire, circuit), 'state', {
-        get() {
-          return state;
-        },
-      });
+  return parent.id ? circuit : deferredSignals.reduce(wire, circuit);
 };
 
 export default build;
