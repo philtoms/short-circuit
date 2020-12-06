@@ -249,7 +249,7 @@ import circuit from 'short-circuit';
 
 // two independent circuits with signal alignment.
 
-const state = {
+const data = {
   items: {
     add: (acc, item) => [...items, item],
   },
@@ -257,16 +257,16 @@ const state = {
 
 const view = {
   add_() {
-    return <input onChange={(e) => this.signal('./items/add', e)} />;
+    return <input onChange={(e) => this.signal('//items/add', e)} />;
   },
-  items: (items) => items.map((item) => <div>item</div>),
+  items_: (items) => items.map((item) => <div>item</div>),
   $state: ({ items }) => <main>{items}</main>,
 };
 
 // A junction will be created on the xpath aligned `/items` selector
 // allowing state change signals to cross over the layer boundary.
 
-circuit(state).layer(view, {
+circuit(data, { state: { items: [] } }).layer(view, {
   terminal: (displayState) =>
     render(displayState, document.querySelector('#todo')),
 });

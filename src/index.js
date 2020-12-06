@@ -36,7 +36,9 @@ const build = (signals, config = {}) => {
     // halt propagation when signal is unchanged
     if (
       signalState === state ||
-      (address in signalState && signalState[address] === state[address])
+      (typeof signalState === 'object' &&
+        address in signalState &&
+        signalState[address] === state[address])
     ) {
       return signalState;
     }
@@ -55,7 +57,7 @@ const build = (signals, config = {}) => {
       if (bubble)
         state = handlers.reduce(
           (acc, [key, handler, deferring]) =>
-            deferring && signal.startsWith(key)
+            deferring && key && signal.startsWith(key)
               ? (handler(
                   acc[address] === undefined ? acc : acc[address],
                   handlers
@@ -124,7 +126,10 @@ const build = (signals, config = {}) => {
     const self = {
       id,
       address,
-      signal: (id, value) => fromSignal(acc, id.split('/'))[1](value),
+      signal: (id, value) =>
+        fromSignal((id.startsWith('//') && junctions) || acc, id.split('/'))[1](
+          value
+        ),
     };
 
     const proxy = new Proxy(self, {
@@ -173,7 +178,7 @@ const build = (signals, config = {}) => {
     if ((!deferring && !event) || event === 'state') {
       handlers.push([address, handler]);
       const [layer, junction] = fromSignal(junctions, id.split('/'));
-      if (junction) {
+      if (typeof junction === 'function') {
         handlers.push([address, junction, layer, true]);
         layer.push([address, handler, handlers, true]);
       }

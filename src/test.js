@@ -645,4 +645,34 @@ describe('README examples', () => {
 
     cct.s1(); // logs => '/s1', '/s2', '/s3'
   });
+
+  it('Layered circuits', () => {
+    // two independent circuits with signal alignment.
+
+    const data = {
+      items: {
+        add: (acc, item) => [...acc, item],
+      },
+    };
+
+    const view = {
+      add_(value) {
+        // return `<input onChange=${(e) => this.signal('//items/add', e)} />`;
+        this.signal('//items/add', value);
+      },
+      items_: (items) => items.map((item) => `<div>${item}</div>`),
+      $state: ({ items }) => `<main>${items}</main>`,
+    };
+
+    // A junction will be created on the xpath aligned `/items` selector
+    // allowing state change signals to cross over the layer boundary.
+
+    const app = circuit(data, {
+      state: { items: [] },
+    }).layer(view, {
+      terminal: (displayState) =>
+        expect(displayState).toBe('<main><div>item</div></main>'),
+    });
+    app.add('item');
+  });
 });
