@@ -183,6 +183,7 @@ const build = (signals, config = {}) => {
         layer.push([address, handler, handlers, true]);
       }
     }
+
     if (deferring) {
       deferredSignals.push([signal, handler, event]);
     }
