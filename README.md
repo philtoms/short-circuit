@@ -80,16 +80,18 @@ cct.add(1) // => state.count = 2
 
 ## Propagation
 
-Input signals, whether from bound DOM events or from internal state change events, pass through a reducer before propagating through the circuit.
+Input signals pass through a reducer before propagating through the circuit.
 
 Propagation only occurs when a state value change is detected.
 
 ```javascript
 const cct = circuit({
   state1: (acc, value) => acc // no state change so no propagation
-  state1: (acc, value) => {return;} // no state change so no propagation
-  state2: (acc, value) => ({...acc, state2: value}) // no signalled value change so no propagation
-  state3: (acc, value) => ({...acc, state3: value + 1}) // propagate state change
+  state2: (acc, value) => {return;} // no state change, so force propagate signal only
+  state3: (acc, value) => ({...acc, state3: value}) // propagate state change
+  state4: (acc, value) => ({...acc, state4: value + 1}) // propagate state change
+  value1_: (value) => value // no state change so no propagation
+  value2_: (value) => {return;} // no state change, so force propagate signal only
 })
 ```
 
