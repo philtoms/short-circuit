@@ -322,6 +322,7 @@ describe('circuit', () => {
       cct.x.y(456);
       expect(terminal).toHaveBeenCalledWith(
         { x: { y: 456 }, d: { y: 456 } },
+        '/x/y',
         undefined,
         true
       );

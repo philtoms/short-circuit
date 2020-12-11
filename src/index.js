@@ -50,7 +50,9 @@ const build = (signals, config = {}) => {
     if (local)
       state = handlers.reduce(
         (acc, [, handler, deferring]) =>
-          (!deferring && handler(signalState[address], handlers, acc)) || acc,
+          (!deferring &&
+            handler(signalState[address], handlers, signal, acc)) ||
+          acc,
         state
       );
     else {
@@ -61,12 +63,13 @@ const build = (signals, config = {}) => {
             deferring && key && signal.startsWith(key)
               ? (handler(
                   acc[address] === undefined ? acc : acc[address],
-                  handlers
+                  handlers,
+                  signal
                 ),
                 state)
               : (!key &&
                   deferred !== 'state' &&
-                  handler(undefined, handlers, acc)) ||
+                  handler(undefined, handlers, signal, acc)) ||
                 acc,
           state
         );
@@ -76,9 +79,10 @@ const build = (signals, config = {}) => {
       !deferred &&
       handlers.find(([key, , , layered]) => key === address && layered);
 
-    if (terminal && bubble) terminal(state, !!junction || deferred, !!address);
+    if (terminal && bubble)
+      terminal(state, signal, !!junction || deferred, !!address);
 
-    if (junction) junction[1](undefined, true, state);
+    if (junction) junction[1](undefined, true, signal, state);
 
     return state;
   };
@@ -124,12 +128,12 @@ const build = (signals, config = {}) => {
     // a signal can be handled directly or passed through to a child circuit
     const children = signals
       ? build(signals, {
-          terminal: (value, deferred, prop) =>
+          terminal: (value, signal, deferred, prop) =>
             propagate(
               prop ? { ...state, [address]: value } : value,
               deferred,
               address,
-              id
+              signal || id
             ),
           base: acc,
           junctions,
@@ -144,7 +148,7 @@ const build = (signals, config = {}) => {
       if (!address) {
         if (iState !== undefined) {
           state = iState;
-          if (terminal) terminal(state, 'state');
+          if (terminal) terminal(state, id, 'state');
         }
         return acc;
       }
@@ -166,6 +170,7 @@ const build = (signals, config = {}) => {
     const handler = function (
       value,
       deferred,
+      signal,
       acc = address ? state : parent.state()
     ) {
       const key = address || parent.address;
@@ -179,7 +184,7 @@ const build = (signals, config = {}) => {
           : reducer.call(proxy, acc, value),
         deferred,
         signals && !isCircuit ? '' : address,
-        id,
+        signal || id,
         isCircuit || (!address && parent.isCircuit && event !== 'state')
       );
     };
