@@ -2,46 +2,41 @@ const _REDUCERS = Symbol('_REDUCERS');
 const _BASE = Symbol('_BASE');
 const _PROPAGATE = Symbol('_PROPAGATE');
 
-const fromSignal = (circuit = {}, [head, ...tail]) => {
-  if (head === '.') return fromSignal(circuit, tail);
-  if (head === '..') return fromSignal(circuit[_BASE], tail);
-  return !head
-    ? circuit[_BASE]
-      ? fromSignal(circuit[_BASE], [head, ...tail])
-      : fromSignal(circuit, tail)
-    : tail.length
-    ? fromSignal(circuit[head], tail)
-    : [circuit[_REDUCERS], circuit[head]];
-};
-
 const build = (signals, config = {}) => {
   const {
     base,
-    junctions,
     parent = { id: '', state: () => state },
     deferredSignals = [],
     handlers = [],
+    junctions = {},
     ctx = {},
     terminal,
   } = config;
   let { state = {} } = config;
+
+  const fromSignal = (circuit = {}, [head, ...tail]) =>
+    !head
+      ? circuit[_BASE]
+        ? fromSignal(circuit[_BASE], [head, ...tail])
+        : fromSignal(circuit, tail)
+      : head[0] === '.'
+      ? fromSignal(head === '..' ? circuit[_BASE] : circuit, tail)
+      : junctions[head]
+      ? fromSignal(junctions[head], tail)
+      : tail.length
+      ? fromSignal(circuit[head], tail)
+      : [circuit[_REDUCERS], circuit[head]];
+
   const propagate = (signalState, deferred, address, signal, local) => {
+    // cancel propagation?
+    if (signalState === void 0) return state;
+
     // bale until fulfilled
     if (signalState instanceof Promise) {
       signalState.then((state) => {
         return propagate(state, false, address, signal, local);
       });
       return state;
-    }
-
-    // halt propagation when signal is unchanged
-    if (signalState === state) {
-      return state;
-    }
-
-    // restore undefined state
-    if (signalState === undefined) {
-      signalState = state;
     }
 
     // defer bubbling for locally propagated signals
@@ -57,10 +52,11 @@ const build = (signals, config = {}) => {
       );
     else {
       state = signalState;
+      const id = [parent.id, address].join('/');
       if (bubble)
         state = handlers.reduce(
           (acc, [key, handler, deferring]) =>
-            deferring && key && signal.startsWith(key)
+            deferring && key && (signal.startsWith(key) || id.startsWith(key))
               ? (handler(
                   acc[address] === undefined ? acc : acc[address],
                   handlers,
@@ -111,10 +107,7 @@ const build = (signals, config = {}) => {
     const self = {
       id,
       address,
-      signal: (id, value) =>
-        fromSignal((id.startsWith('//') && junctions) || acc, id.split('/'))[1](
-          value
-        ),
+      signal: (id, value) => fromSignal(acc, id.split('/'))[1](value),
     };
 
     const proxy = new Proxy(self, {
@@ -137,22 +130,27 @@ const build = (signals, config = {}) => {
             ),
           base: acc,
           junctions,
-          state: state[address] || state,
+          layer: config.layer,
+          state: state[address],
           parent: { id, address, state: () => state, isCircuit },
           deferredSignals,
         })
       : {};
 
     if (event === 'init') {
-      const iState = reducer.call(proxy, address ? state : parent.state());
-      if (!address) {
-        if (iState !== undefined) {
-          state = iState;
-          if (terminal) terminal(state, id, 'state');
-        }
-        return acc;
+      const signalState = reducer.call(proxy, state);
+      if (signalState instanceof Promise) {
+        signalState.then((signalState) => {
+          if (signalState != void 0) {
+            state = signalState;
+            if (terminal) terminal(state, id, 'state', true);
+          }
+        });
+      } else if (signalState != void 0) {
+        state = signalState;
+        if (terminal) terminal(state, id, 'state', true);
       }
-      if (iState) state[address] = iState[address];
+      return acc;
     }
 
     const mapValue = (key, value) => {
@@ -173,25 +171,28 @@ const build = (signals, config = {}) => {
       signal,
       acc = address ? state : parent.state()
     ) {
+      const hasValue = value !== void 0;
       const key = address || parent.address;
-      if (value === void 0) value = acc[key];
+      if (!hasValue) value = acc[key];
       // circuit handler called for child propagation
-      return (signals ? children[_PROPAGATE] : propagate)(
-        signals
-          ? { ...acc, [key]: value }
-          : asMap
-          ? mapValue(key, value)
-          : reducer.call(proxy, acc, value),
-        deferred,
-        signals && !isCircuit ? '' : address,
-        signal || id,
-        isCircuit || (!address && parent.isCircuit && event !== 'state')
-      );
+      return hasValue && value === acc[address]
+        ? state
+        : (signals ? children[_PROPAGATE] : propagate)(
+            signals
+              ? { ...acc, [key]: value }
+              : asMap
+              ? mapValue(key, value)
+              : reducer.call(proxy, acc, value),
+            deferred,
+            signals && !isCircuit ? '' : address,
+            signal || id,
+            isCircuit || (!address && parent.isCircuit && event !== 'state')
+          );
     };
 
     if ((!deferring && !event) || event === 'state') {
       handlers.push([address, handler]);
-      const [layer, junction] = fromSignal(junctions, id.split('/'));
+      const [layer, junction] = fromSignal(junctions.root, id.split('/'));
       if (typeof junction === 'function') {
         handlers.push([address, junction, layer, true]);
         layer.push([address, handler, handlers, true]);
@@ -208,7 +209,7 @@ const build = (signals, config = {}) => {
     handler[_BASE] = children[_BASE];
 
     if (event !== 'state') acc[alias || address || event] = handler;
-
+    junctions[config.layer || 'root'] = acc;
     return acc;
   };
 
@@ -219,8 +220,12 @@ const build = (signals, config = {}) => {
     get state() {
       return state;
     },
-    layer: (signals, config) =>
-      build(signals, { ...config, junctions: circuit }),
+    layer: (signals, config = {}) =>
+      build(signals, {
+        ...config,
+        junctions,
+        layer: config.layer || Object.keys(junctions).length,
+      }),
   });
 
   return parent.id ? circuit : deferredSignals.reduce(wire, circuit);
